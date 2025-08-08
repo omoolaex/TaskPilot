@@ -1,27 +1,30 @@
 // src/app/layout.tsx
-import type { Metadata } from "next"
-import { Geist, Geist_Mono } from "next/font/google"
-import "./globals.css"
+"use client";
 
-import { ThemeProvider } from "@/components/providers/theme-provider"
-import RootClientWrapper from "@/components/RootClientWrapper"
+import type { Metadata } from "next";
+import { Geist, Geist_Mono } from "next/font/google";
+import "./globals.css";
+
+import { ThemeProvider } from "@/components/providers/theme-provider";
+import RootClientWrapper from "@/components/RootClientWrapper";
+import { SessionProvider } from "next-auth/react";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
   subsets: ["latin"],
-})
+});
 
 const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
   subsets: ["latin"],
-})
+});
 
 export const metadata: Metadata = {
   title: "TaskPilot",
   description: "Your AI Assistant for Business Success",
   icons: [{ rel: "icon", url: "/icon-192x192.png" }],
   manifest: "/manifest.json",
-}
+};
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -34,10 +37,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body
         className={`${geistSans.variable} ${geistMono.variable} font-sans antialiased`}
       >
-        <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
-          <RootClientWrapper>{children}</RootClientWrapper>
-        </ThemeProvider>
+        <SessionProvider>
+          <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
+            <RootClientWrapper>{children}</RootClientWrapper>
+          </ThemeProvider>
+        </SessionProvider>
       </body>
     </html>
-  )
+  );
 }

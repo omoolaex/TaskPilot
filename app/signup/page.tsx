@@ -28,8 +28,14 @@ export default function SignupPage() {
     }
   }, [status, router]);
 
-  // ⏳ Avoid flash while checking session
-  if (status === "loading" || status === "authenticated") return null;
+  // ⏳ Show loading state while checking session
+  if (status === "loading" || status === "authenticated") {
+    return (
+      <main className="min-h-screen flex items-center justify-center">
+        <p className="text-sm text-muted-foreground">Loading...</p>
+      </main>
+    );
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -42,6 +48,19 @@ export default function SignupPage() {
     setLoading(true);
 
     try {
+      // ✅ Check if email already exists
+      const { data: existingUser } = await supabase
+        .from("users")
+        .select("email")
+        .eq("email", email)
+        .single();
+
+      if (existingUser) {
+        toast.error("Email already in use. Please log in instead.");
+        setLoading(false);
+        return;
+      }
+
       const hashedPassword = await bcrypt.hash(password, 10);
 
       const { error } = await supabase.from("users").insert([
@@ -56,11 +75,12 @@ export default function SignupPage() {
       if (error) {
         toast.error(error.message || "Signup failed.");
       } else {
-        toast.success("Account created. You can now login.");
+        toast.success("Account created successfully!");
         router.push("/login");
       }
     } catch (err) {
-      toast.error("Something went wrong.");
+      console.error(err);
+      toast.error("Something went wrong. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -94,6 +114,7 @@ export default function SignupPage() {
             </Button>
           </div>
 
+          {/* Divider */}
           <div className="relative">
             <div className="absolute inset-0 flex items-center">
               <div className="w-full border-t border-muted" />

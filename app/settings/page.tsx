@@ -19,7 +19,6 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import Image from "next/image"
 
-// Shape of settings in state
 type Settings = {
   theme: "system" | "light" | "dark"
   notifications: { email: boolean; push: boolean; sms: boolean }
@@ -48,7 +47,6 @@ export default function SettingsPage() {
   const [previewTheme, setPreviewTheme] = useState<"system" | "light" | "dark">("system")
   const [sessions, setSessions] = useState<any[]>([])
 
-  // Fetch settings & sessions
   useEffect(() => {
     if (!userId) return
 
@@ -56,45 +54,21 @@ export default function SettingsPage() {
       setLoading(true)
       const { data, error } = await supabase
         .from("settings")
-        .select("key, value")
+        .select("settings")
         .eq("user_id", userId)
+        .single()
 
-      if (error) {
+      if (error && error.code !== "PGRST116") {
         toast.error("Failed to load settings")
         setLoading(false)
         return
       }
 
-      const loaded = structuredClone(defaultSettings)
-
-      data?.forEach(({ key, value }) => {
-        const parts = key.split(".")
-        if (parts.length === 1 && key === "theme") loaded.theme = value
-        if (parts[0] === "notifications") {
-          loaded.notifications[parts[1] as keyof typeof loaded.notifications] =
-            value === "true" || value === true
-        }
-        if (parts[0] === "privacy") {
-          if (parts[1] === "accountVisibility") {
-            loaded.privacy.accountVisibility = value
-          } else if (parts[1] === "twoFactor") {
-            loaded.privacy.twoFactor = value === "true" || value === true
-          } else if (parts[1] === "dataSharing") {
-            loaded.privacy.dataSharing = value === "true" || value === true
-          }
-        }
-        if (parts[0] === "profile") {
-          loaded.profile[parts[1] as keyof typeof loaded.profile] = value
-        }
-        if (parts[0] === "advanced") {
-          loaded.advanced[parts[1] as keyof typeof loaded.advanced] =
-            value === "true" || value === true
-        }
-      })
-
-      setSettings(loaded)
-      setSavedSettings(loaded)
-      setPreviewTheme(loaded.theme)
+      if (data?.settings) {
+        setSettings(data.settings)
+        setSavedSettings(data.settings)
+        setPreviewTheme(data.settings.theme)
+      }
       setLoading(false)
     }
 
@@ -107,7 +81,6 @@ export default function SettingsPage() {
     fetchSessions()
   }, [userId])
 
-  // Live theme preview
   useEffect(() => {
     setTheme(previewTheme)
   }, [previewTheme, setTheme])
@@ -119,34 +92,12 @@ export default function SettingsPage() {
     setLoading(true)
 
     try {
-      const entries: { key: string; value: string }[] = []
-
-      // Flatten settings to key/value
-      entries.push({ key: "theme", value: settings.theme })
-      Object.entries(settings.notifications).forEach(([k, v]) =>
-        entries.push({ key: `notifications.${k}`, value: v.toString() })
-      )
-      Object.entries(settings.privacy).forEach(([k, v]) =>
-        entries.push({ key: `privacy.${k}`, value: v.toString() })
-      )
-      Object.entries(settings.profile).forEach(([k, v]) =>
-        entries.push({ key: `profile.${k}`, value: v.toString() })
-      )
-      Object.entries(settings.advanced).forEach(([k, v]) =>
-        entries.push({ key: `advanced.${k}`, value: v.toString() })
-      )
-
-      const keysToDelete = entries.map((e) => e.key)
-
-      await supabase
+      const { error } = await supabase
         .from("settings")
-        .delete()
-        .eq("user_id", userId)
-        .in("key", keysToDelete)
-
-      const { error } = await supabase.from("settings").insert(
-        entries.map((e) => ({ user_id: userId, key: e.key, value: e.value }))
-      )
+        .upsert(
+          { user_id: userId, settings },
+          { onConflict: "user_id" }
+        )
 
       if (error) throw error
 
@@ -185,7 +136,6 @@ export default function SettingsPage() {
   }
 
   async function logOutOtherSessions() {
-    // Replace with real RPC or API to clear other sessions
     toast.success("Other sessions logged out")
   }
 
@@ -246,7 +196,7 @@ export default function SettingsPage() {
         </CardContent>
       </Card>
 
-      {/* Privacy & Security */}
+      {/* Privacy */}
       <Card>
         <CardContent className="space-y-4">
           <h2 className="text-2xl font-semibold">Privacy & Security</h2>
@@ -300,7 +250,7 @@ export default function SettingsPage() {
         </CardContent>
       </Card>
 
-      {/* Account & Profile */}
+      {/* Profile */}
       <Card>
         <CardContent className="space-y-4">
           <h2 className="text-2xl font-semibold">Account & Profile</h2>
@@ -313,6 +263,7 @@ export default function SettingsPage() {
                 width={80}
                 height={80}
                 className="rounded-full"
+                unoptimized
               />
             )}
             <Input
@@ -341,7 +292,9 @@ export default function SettingsPage() {
               }))
             }
           />
-          <Button onClick={() => router.push("/reset=password")} variant="outline">Change Password</Button>
+          <Button onClick={() => router.push("/reset-password")} variant="outline">
+            Change Password
+          </Button>
         </CardContent>
       </Card>
 
