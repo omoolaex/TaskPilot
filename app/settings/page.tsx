@@ -1,3 +1,4 @@
+// app/settings/page.tsx
 "use client";
 
 import { useEffect, useState, useCallback, useMemo } from "react";
@@ -45,7 +46,6 @@ export default function SettingsPage() {
   const [savedSettings, setSavedSettings] = useState<Settings>(defaultSettings);
   const [loading, setLoading] = useState(false);
   const [previewTheme, setPreviewTheme] = useState<"system" | "light" | "dark">("system");
-  const [sessions, setSessions] = useState<unknown[]>([]);
 
   const isDirty = useMemo(
     () => JSON.stringify(settings) !== JSON.stringify(savedSettings),
@@ -55,13 +55,15 @@ export default function SettingsPage() {
   const fetchSettings = useCallback(async () => {
     if (!userId) return;
     setLoading(true);
+
     const { data, error } = await supabase
       .from("settings")
       .select("settings")
       .eq("user_id", userId)
       .single();
 
-    if (error && error.code !== "PGRST116") {
+    // PGRST116 is PostgREST "No rows found" — not a fatal error here
+    if (error && (error.code as string) !== "PGRST116") {
       toast.error("Failed to load settings");
       setLoading(false);
       return;
@@ -70,44 +72,50 @@ export default function SettingsPage() {
     if (data?.settings) {
       setSettings(data.settings);
       setSavedSettings(data.settings);
-      setPreviewTheme(data.settings.theme);
+      setPreviewTheme(data.settings.theme ?? "system");
+    } else {
+      // ensure defaults saved locally
+      setSettings(defaultSettings);
+      setSavedSettings(defaultSettings);
+      setPreviewTheme(defaultSettings.theme);
     }
-    setLoading(false);
-  }, [userId]);
 
-  const fetchSessions = useCallback(async () => {
-    if (!userId) return;
-    const { data, error } = await supabase.rpc("get_user_sessions", { uid: userId });
-    if (!error && data) setSessions(data);
+    setLoading(false);
   }, [userId]);
 
   useEffect(() => {
     void fetchSettings();
-    void fetchSessions();
-  }, [fetchSettings, fetchSessions]);
+  }, [fetchSettings]);
 
   useEffect(() => {
+    // preview theme immediately (not saved until Save)
     setTheme(previewTheme);
   }, [previewTheme, setTheme]);
 
   const saveSettings = useCallback(async () => {
     if (!userId) return;
     setLoading(true);
+
     try {
+      // Upsert JSON settings object into `settings` table.
+      // Requires `user_id` to be unique (unique index) in the DB.
       const { error } = await supabase
         .from("settings")
         .upsert({ user_id: userId, settings }, { onConflict: "user_id" });
 
       if (error) throw error;
+
       setSavedSettings(settings);
       toast.success("Settings saved successfully");
       setTheme(settings.theme);
 
+      // ensure global rehydration: refresh and reload
       setTimeout(() => {
         router.refresh();
-        window.location.reload();
+        void window.location.reload();
       }, 300);
-    } catch {
+    } catch (err) {
+      console.error(err);
       toast.error("Failed to save settings");
     } finally {
       setLoading(false);
@@ -118,7 +126,9 @@ export default function SettingsPage() {
     async (file: File) => {
       if (!userId) return;
       const fileExt = file.name.split(".").pop();
+      if (!fileExt) return toast.error("Invalid file");
       const filePath = `avatars/${userId}.${fileExt}`;
+
       const { error: uploadError } = await supabase.storage
         .from("avatars")
         .upload(filePath, file, { upsert: true });
@@ -128,12 +138,16 @@ export default function SettingsPage() {
         return;
       }
 
-      const { data } = supabase.storage.from("avatars").getPublicUrl(filePath);
-      setSettings((prev) => ({
-        ...prev,
-        profile: { ...prev.profile, profilePicture: data.publicUrl },
-      }));
-      toast.success("Profile picture uploaded");
+      const { data: publicData } = supabase.storage.from("avatars").getPublicUrl(filePath);
+      if (publicData?.publicUrl) {
+        setSettings((prev) => ({
+          ...prev,
+          profile: { ...prev.profile, profilePicture: publicData.publicUrl },
+        }));
+        toast.success("Profile picture uploaded");
+      } else {
+        toast.error("Failed to get public URL");
+      }
     },
     [userId]
   );
@@ -163,8 +177,8 @@ export default function SettingsPage() {
           <Select
             value={settings.theme}
             onValueChange={(v) => {
-              setSettings((p) => ({ ...p, theme: v as Settings["theme"] }))
-              setPreviewTheme(v as Settings["theme"])
+              setSettings((p) => ({ ...p, theme: v as Settings["theme"] }));
+              setPreviewTheme(v as Settings["theme"]);
             }}
           >
             <SelectTrigger aria-label="Select Theme">
@@ -189,10 +203,7 @@ export default function SettingsPage() {
               <Switch
                 checked={value}
                 onCheckedChange={(checked) =>
-                  setSettings((p) => ({
-                    ...p,
-                    notifications: { ...p.notifications, [key]: checked },
-                  }))
+                  setSettings((p) => ({ ...p, notifications: { ...p.notifications, [key]: checked } }))
                 }
               />
             </div>
@@ -209,10 +220,7 @@ export default function SettingsPage() {
             <Switch
               checked={settings.privacy.twoFactor}
               onCheckedChange={(checked) =>
-                setSettings((p) => ({
-                  ...p,
-                  privacy: { ...p.privacy, twoFactor: checked },
-                }))
+                setSettings((p) => ({ ...p, privacy: { ...p.privacy, twoFactor: checked } }))
               }
             />
           </div>
@@ -221,10 +229,7 @@ export default function SettingsPage() {
             <Switch
               checked={settings.privacy.dataSharing}
               onCheckedChange={(checked) =>
-                setSettings((p) => ({
-                  ...p,
-                  privacy: { ...p.privacy, dataSharing: checked },
-                }))
+                setSettings((p) => ({ ...p, privacy: { ...p.privacy, dataSharing: checked } }))
               }
             />
           </div>
@@ -233,10 +238,7 @@ export default function SettingsPage() {
             <Select
               value={settings.privacy.accountVisibility}
               onValueChange={(v) =>
-                setSettings((p) => ({
-                  ...p,
-                  privacy: { ...p.privacy, accountVisibility: v as "public" | "private" },
-                }))
+                setSettings((p) => ({ ...p, privacy: { ...p.privacy, accountVisibility: v as "public" | "private" } }))
               }
             >
               <SelectTrigger>
@@ -280,20 +282,14 @@ export default function SettingsPage() {
             placeholder="Display Name"
             value={settings.profile.displayName}
             onChange={(e) =>
-              setSettings((p) => ({
-                ...p,
-                profile: { ...p.profile, displayName: e.target.value },
-              }))
+              setSettings((p) => ({ ...p, profile: { ...p.profile, displayName: e.target.value } }))
             }
           />
           <Input
             placeholder="Username"
             value={settings.profile.username}
             onChange={(e) =>
-              setSettings((p) => ({
-                ...p,
-                profile: { ...p.profile, username: e.target.value },
-              }))
+              setSettings((p) => ({ ...p, profile: { ...p.profile, username: e.target.value } }))
             }
           />
           <Button onClick={() => router.push("/reset-password")} variant="outline">
@@ -311,10 +307,7 @@ export default function SettingsPage() {
             <Switch
               checked={settings.advanced.betaFeatures}
               onCheckedChange={(checked) =>
-                setSettings((p) => ({
-                  ...p,
-                  advanced: { ...p.advanced, betaFeatures: checked },
-                }))
+                setSettings((p) => ({ ...p, advanced: { ...p.advanced, betaFeatures: checked } }))
               }
             />
           </div>
@@ -326,11 +319,7 @@ export default function SettingsPage() {
 
       {/* Actions */}
       <div className="flex justify-end gap-4">
-        <Button
-          onClick={() => setSettings(savedSettings)}
-          disabled={!isDirty || loading}
-          variant="outline"
-        >
+        <Button onClick={() => setSettings(savedSettings)} disabled={!isDirty || loading} variant="outline">
           Reset
         </Button>
         <Button onClick={saveSettings} disabled={!isDirty || loading}>
@@ -338,5 +327,5 @@ export default function SettingsPage() {
         </Button>
       </div>
     </main>
-  )
+  );
 }

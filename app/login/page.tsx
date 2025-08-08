@@ -1,6 +1,7 @@
+// app/login/page.tsx
 "use client";
 
-import { useEffect, useState, FormEvent } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { signIn, useSession } from "next-auth/react";
 import { FcGoogle } from "react-icons/fc";
@@ -14,23 +15,22 @@ import bcrypt from "bcryptjs";
 
 export default function LoginPage() {
   const router = useRouter();
-  const { status } = useSession(); // removed `session` since unused
+  // only need status here (we don't use `session` directly)
+  const { status } = useSession();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
 
-  // Redirect if already authenticated
   useEffect(() => {
     if (status === "authenticated") {
       router.replace("/dashboard");
     }
   }, [status, router]);
 
-  // Prevent rendering during session check or if logged in
   if (status === "loading" || status === "authenticated") return null;
 
-  const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
 
@@ -46,7 +46,7 @@ export default function LoginPage() {
       return;
     }
 
-    const valid = await bcrypt.compare(password, user.password as string);
+    const valid = await bcrypt.compare(password, user.password);
 
     if (!valid) {
       toast.error("Incorrect password.");
@@ -98,41 +98,20 @@ export default function LoginPage() {
             </Button>
           </div>
 
-          {/* Divider */}
           <div className="relative">
             <div className="absolute inset-0 flex items-center">
               <div className="w-full border-t border-muted" />
             </div>
             <div className="relative flex justify-center text-xs uppercase">
-              <span className="bg-background px-2 text-muted-foreground">
-                or continue with email
-              </span>
+              <span className="bg-background px-2 text-muted-foreground">or continue with email</span>
             </div>
           </div>
 
-          {/* Email login form */}
           <form onSubmit={handleSubmit} className="space-y-4">
-            <Input
-              type="email"
-              placeholder="Email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-            />
-            <Input
-              type="password"
-              placeholder="Password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-            />
+            <Input type="email" placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} required />
+            <Input type="password" placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} required />
 
-            <Button
-              type="button"
-              variant="link"
-              className="px-0 text-sm text-muted-foreground hover:underline"
-              onClick={() => router.push("/forgot-password")}
-            >
+            <Button type="button" variant="link" className="px-0 text-sm text-muted-foreground hover:underline" onClick={() => router.push("/forgot-password")}>
               Forgot Password?
             </Button>
 
@@ -140,12 +119,7 @@ export default function LoginPage() {
               {loading ? "Signing in..." : "Sign In"}
             </Button>
 
-            <Button
-              type="button"
-              variant="ghost"
-              className="w-full"
-              onClick={() => router.push("/signup")}
-            >
+            <Button type="button" variant="ghost" className="w-full" onClick={() => router.push("/signup")}>
               Don’t have an account? Sign up
             </Button>
           </form>

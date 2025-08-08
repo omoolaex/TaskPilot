@@ -1,4 +1,3 @@
-// src/components/layout/Sidebar.tsx
 "use client"
 
 import Link from "next/link"
@@ -25,7 +24,11 @@ const navItems = [
   { name: "Settings", href: "/settings", icon: Settings },
 ]
 
-export default function Sidebar() {
+type SidebarProps = {
+  onNavigate?: () => void
+}
+
+export default function Sidebar({ onNavigate }: SidebarProps) {
   const pathname = usePathname()
   const { data: session } = useSession()
   const user = session?.user
@@ -68,7 +71,11 @@ export default function Sidebar() {
             return (
               <Tooltip key={href}>
                 <TooltipTrigger asChild>
-                  <Link href={href} className={linkClass}>
+                  <Link
+                    href={href}
+                    className={linkClass}
+                    onClick={onNavigate} // close sidebar on click
+                  >
                     <Icon className="w-5 h-5" />
                     {!collapsed && name}
                   </Link>
@@ -85,48 +92,54 @@ export default function Sidebar() {
 
         {/* Bottom Auth Section */}
         <div className="border-t dark:border-gray-700 px-4 py-3">
-        {user ? (
-          <div className={clsx("flex items-center gap-3", collapsed && "justify-center")}>
-            {!collapsed && (
-              <Avatar className="h-8 w-8 shrink-0">
-                {user.image ? (
-                  <AvatarImage src={user.image} alt={user.name || "User"} />
-                ) : (
-                  <AvatarFallback>
-                    {user.name?.charAt(0).toUpperCase() || "U"}
-                  </AvatarFallback>
-                )}
-              </Avatar>
-            )}
-            {!collapsed && (
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium truncate text-gray-900 dark:text-white">
-                  {user.name}
-                </p>
-                <p className="text-xs text-gray-500 truncate">{user.email}</p>
-              </div>
-            )}
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => signOut({ callbackUrl: "/login" })}
-              title="Logout"
-            >
-              <LogOut className="w-4 h-4" />
-            </Button>
-          </div>
-        ) : (
-          <div className={clsx(collapsed ? "flex justify-center" : "")}>
-            <Button
-              variant="outline"
-              className={clsx("w-full flex items-center justify-center gap-2", collapsed && "w-auto")}
-              onClick={() => signIn()}
-            >
-              <LogIn className="w-4 h-4" />
-              {!collapsed && "Login / Signup"}
-            </Button>
-          </div>
-        )}
+          {user ? (
+            <div className={clsx("flex items-center gap-3", collapsed && "justify-center")}>
+              {!collapsed && (
+                <Avatar className="h-8 w-8 shrink-0">
+                  {user.image ? (
+                    <AvatarImage src={user.image} alt={user.name || "User"} />
+                  ) : (
+                    <AvatarFallback>
+                      {user.name?.charAt(0).toUpperCase() || "U"}
+                    </AvatarFallback>
+                  )}
+                </Avatar>
+              )}
+              {!collapsed && (
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium truncate text-gray-900 dark:text-white">
+                    {user.name}
+                  </p>
+                  <p className="text-xs text-gray-500 truncate">{user.email}</p>
+                </div>
+              )}
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => {
+                  onNavigate?.()
+                  signOut({ callbackUrl: "/login" })
+                }}
+                title="Logout"
+              >
+                <LogOut className="w-4 h-4" />
+              </Button>
+            </div>
+          ) : (
+            <div className={clsx(collapsed ? "flex justify-center" : "")}>
+              <Button
+                variant="outline"
+                className={clsx("w-full flex items-center justify-center gap-2", collapsed && "w-auto")}
+                onClick={() => {
+                  onNavigate?.()
+                  signIn()
+                }}
+              >
+                <LogIn className="w-4 h-4" />
+                {!collapsed && "Login / Signup"}
+              </Button>
+            </div>
+          )}
         </div>
       </aside>
     </TooltipProvider>

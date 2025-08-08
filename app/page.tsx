@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import { useRouter } from "next/navigation"
 import { motion } from "framer-motion"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
@@ -8,6 +9,7 @@ import { useInstallPrompt } from "@/hooks/useInstallPrompt"
 import { toast } from "sonner"
 
 export default function Home() {
+  const router = useRouter()
   const { canInstall, promptInstall } = useInstallPrompt()
   const [showInstallButton, setShowInstallButton] = useState(false)
 
@@ -49,7 +51,11 @@ export default function Home() {
       </Card>
 
       <div className="flex flex-col sm:flex-row gap-4 justify-center items-center w-full sm:w-auto">
-        <Button size="lg" className="w-full sm:w-auto">
+        <Button
+          size="lg"
+          onClick={() => router.push("/login")}
+          className="w-full sm:w-auto"
+        >
           🚧 Try it Now
         </Button>
 
