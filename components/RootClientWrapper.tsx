@@ -1,29 +1,36 @@
-"use client"
+// src/components/RootClientWrapper.tsx
+"use client";
 
-import { useEffect } from "react"
-import { useSession, SessionProvider } from "next-auth/react"
-import { supabase } from "@/lib/supabase"
-import { useTheme } from "next-themes"
-import LayoutSelector from "@/components/layout/LayoutSelector"
-import { Toaster } from "sonner"
+import { useEffect } from "react";
+import { useSession, SessionProvider } from "next-auth/react";
+import { supabase } from "@/lib/supabase";
+import { useTheme, ThemeProvider } from "next-themes";
+import LayoutSelector from "@/components/layout/LayoutSelector";
+import { Toaster } from "sonner";
 
-export default function RootClientWrapper({ children }: { children: React.ReactNode }) {
+export default function RootClientWrapper({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   return (
     <SessionProvider>
-      <InnerRootClientWrapper>{children}</InnerRootClientWrapper>
+      <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
+        <InnerRootClientWrapper>{children}</InnerRootClientWrapper>
+      </ThemeProvider>
     </SessionProvider>
-  )
+  );
 }
 
 function InnerRootClientWrapper({ children }: { children: React.ReactNode }) {
-  const { data: session } = useSession()
-  const { setTheme } = useTheme()
+  const { data: session } = useSession();
+  const { setTheme } = useTheme();
 
   useEffect(() => {
     async function loadUserTheme() {
       if (!session?.user?.id) {
-        setTheme("system")
-        return
+        setTheme("system");
+        return;
       }
 
       const { data, error } = await supabase
@@ -31,21 +38,22 @@ function InnerRootClientWrapper({ children }: { children: React.ReactNode }) {
         .select("value")
         .eq("user_id", session.user.id)
         .eq("key", "theme")
-        .single()
+        .single();
 
       if (!error && data?.value) {
-        setTheme(data.value)
+        setTheme(data.value);
       } else {
-        setTheme("system")
+        setTheme("system");
       }
     }
-    loadUserTheme()
-  }, [session, setTheme])
+
+    loadUserTheme();
+  }, [session, setTheme]);
 
   return (
     <>
       <Toaster richColors />
       <LayoutSelector>{children}</LayoutSelector>
     </>
-  )
+  );
 }

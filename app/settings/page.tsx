@@ -1,31 +1,31 @@
-"use client"
+"use client";
 
-import { useEffect, useState } from "react"
-import { useSession } from "next-auth/react"
-import { useTheme } from "next-themes"
-import { supabase } from "@/lib/supabase"
-import { toast } from "sonner"
-import { useRouter } from "next/navigation"
-import { Button } from "@/components/ui/button"
+import { useEffect, useState, useCallback, useMemo } from "react";
+import { useSession } from "next-auth/react";
+import { useTheme } from "next-themes";
+import { supabase } from "@/lib/supabase";
+import { toast } from "sonner";
+import { useRouter } from "next/navigation";
+import { Button } from "@/components/ui/button";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select"
-import { Switch } from "@/components/ui/switch"
-import { Card, CardContent } from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
-import Image from "next/image"
+} from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
+import { Card, CardContent } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import Image from "next/image";
 
 type Settings = {
-  theme: "system" | "light" | "dark"
-  notifications: { email: boolean; push: boolean; sms: boolean }
-  privacy: { twoFactor: boolean; dataSharing: boolean; accountVisibility: "public" | "private" }
-  profile: { displayName: string; username: string; profilePicture: string }
-  advanced: { betaFeatures: boolean }
-}
+  theme: "system" | "light" | "dark";
+  notifications: { email: boolean; push: boolean; sms: boolean };
+  privacy: { twoFactor: boolean; dataSharing: boolean; accountVisibility: "public" | "private" };
+  profile: { displayName: string; username: string; profilePicture: string };
+  advanced: { betaFeatures: boolean };
+};
 
 const defaultSettings: Settings = {
   theme: "system",
@@ -33,120 +33,124 @@ const defaultSettings: Settings = {
   privacy: { twoFactor: false, dataSharing: true, accountVisibility: "public" },
   profile: { displayName: "", username: "", profilePicture: "" },
   advanced: { betaFeatures: false },
-}
+};
 
 export default function SettingsPage() {
-  const { data: session, status } = useSession()
-  const userId = session?.user?.id
-  const { setTheme } = useTheme()
-  const router = useRouter()
+  const { data: session, status } = useSession();
+  const userId = session?.user?.id as string | undefined;
+  const { setTheme } = useTheme();
+  const router = useRouter();
 
-  const [settings, setSettings] = useState<Settings>(defaultSettings)
-  const [savedSettings, setSavedSettings] = useState<Settings>(defaultSettings)
-  const [loading, setLoading] = useState(false)
-  const [previewTheme, setPreviewTheme] = useState<"system" | "light" | "dark">("system")
-  const [sessions, setSessions] = useState<any[]>([])
+  const [settings, setSettings] = useState<Settings>(defaultSettings);
+  const [savedSettings, setSavedSettings] = useState<Settings>(defaultSettings);
+  const [loading, setLoading] = useState(false);
+  const [previewTheme, setPreviewTheme] = useState<"system" | "light" | "dark">("system");
+  const [sessions, setSessions] = useState<unknown[]>([]);
 
-  useEffect(() => {
-    if (!userId) return
+  const isDirty = useMemo(
+    () => JSON.stringify(settings) !== JSON.stringify(savedSettings),
+    [settings, savedSettings]
+  );
 
-    const fetchSettings = async () => {
-      setLoading(true)
-      const { data, error } = await supabase
-        .from("settings")
-        .select("settings")
-        .eq("user_id", userId)
-        .single()
+  const fetchSettings = useCallback(async () => {
+    if (!userId) return;
+    setLoading(true);
+    const { data, error } = await supabase
+      .from("settings")
+      .select("settings")
+      .eq("user_id", userId)
+      .single();
 
-      if (error && error.code !== "PGRST116") {
-        toast.error("Failed to load settings")
-        setLoading(false)
-        return
-      }
-
-      if (data?.settings) {
-        setSettings(data.settings)
-        setSavedSettings(data.settings)
-        setPreviewTheme(data.settings.theme)
-      }
-      setLoading(false)
+    if (error && error.code !== "PGRST116") {
+      toast.error("Failed to load settings");
+      setLoading(false);
+      return;
     }
 
-    const fetchSessions = async () => {
-      const { data, error } = await supabase.rpc("get_user_sessions", { uid: userId })
-      if (!error && data) setSessions(data)
+    if (data?.settings) {
+      setSettings(data.settings);
+      setSavedSettings(data.settings);
+      setPreviewTheme(data.settings.theme);
     }
+    setLoading(false);
+  }, [userId]);
 
-    fetchSettings()
-    fetchSessions()
-  }, [userId])
+  const fetchSessions = useCallback(async () => {
+    if (!userId) return;
+    const { data, error } = await supabase.rpc("get_user_sessions", { uid: userId });
+    if (!error && data) setSessions(data);
+  }, [userId]);
 
   useEffect(() => {
-    setTheme(previewTheme)
-  }, [previewTheme, setTheme])
+    void fetchSettings();
+    void fetchSessions();
+  }, [fetchSettings, fetchSessions]);
 
-  const isDirty = JSON.stringify(settings) !== JSON.stringify(savedSettings)
+  useEffect(() => {
+    setTheme(previewTheme);
+  }, [previewTheme, setTheme]);
 
-  async function saveSettings() {
-    if (!userId) return
-    setLoading(true)
-
+  const saveSettings = useCallback(async () => {
+    if (!userId) return;
+    setLoading(true);
     try {
       const { error } = await supabase
         .from("settings")
-        .upsert(
-          { user_id: userId, settings },
-          { onConflict: "user_id" }
-        )
+        .upsert({ user_id: userId, settings }, { onConflict: "user_id" });
 
-      if (error) throw error
-
-      setSavedSettings(settings)
-      toast.success("Settings saved successfully")
-      setTheme(settings.theme)
+      if (error) throw error;
+      setSavedSettings(settings);
+      toast.success("Settings saved successfully");
+      setTheme(settings.theme);
 
       setTimeout(() => {
-        router.refresh()
-        window.location.reload()
-      }, 300)
+        router.refresh();
+        window.location.reload();
+      }, 300);
     } catch {
-      toast.error("Failed to save settings")
+      toast.error("Failed to save settings");
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }
+  }, [settings, setTheme, userId, router]);
 
-  async function handleProfilePictureUpload(file: File) {
-    if (!userId) return
-    const fileExt = file.name.split(".").pop()
-    const filePath = `avatars/${userId}.${fileExt}`
-    const { error: uploadError } = await supabase.storage
-      .from("avatars")
-      .upload(filePath, file, { upsert: true })
-    if (uploadError) {
-      toast.error("Upload failed")
-      return
-    }
-    const { data } = supabase.storage.from("avatars").getPublicUrl(filePath)
-    setSettings((prev) => ({
-      ...prev,
-      profile: { ...prev.profile, profilePicture: data.publicUrl },
-    }))
-    toast.success("Profile picture uploaded")
-  }
+  const handleProfilePictureUpload = useCallback(
+    async (file: File) => {
+      if (!userId) return;
+      const fileExt = file.name.split(".").pop();
+      const filePath = `avatars/${userId}.${fileExt}`;
+      const { error: uploadError } = await supabase.storage
+        .from("avatars")
+        .upload(filePath, file, { upsert: true });
 
-  async function logOutOtherSessions() {
-    toast.success("Other sessions logged out")
-  }
+      if (uploadError) {
+        toast.error("Upload failed");
+        return;
+      }
 
-  async function deleteAccount() {
-    if (!confirm("Are you sure you want to delete your account? This is irreversible.")) return
-    await supabase.rpc("delete_user_account", { uid: userId })
-    toast.success("Account deleted")
-  }
+      const { data } = supabase.storage.from("avatars").getPublicUrl(filePath);
+      setSettings((prev) => ({
+        ...prev,
+        profile: { ...prev.profile, profilePicture: data.publicUrl },
+      }));
+      toast.success("Profile picture uploaded");
+    },
+    [userId]
+  );
 
-  if (status === "loading") return <div>Loading...</div>
-  if (!session) return <div>Please login to access settings.</div>
+  const logOutOtherSessions = useCallback(() => {
+    toast.success("Other sessions logged out");
+  }, []);
+
+  const deleteAccount = useCallback(async () => {
+    if (!userId) return;
+    if (!confirm("Are you sure you want to delete your account? This is irreversible.")) return;
+    await supabase.rpc("delete_user_account", { uid: userId });
+    toast.success("Account deleted");
+  }, [userId]);
+
+  if (status === "loading") return <div>Loading...</div>;
+  if (!session) return <div>Please login to access settings.</div>;
 
   return (
     <main className="max-w-3xl mx-auto p-6 space-y-8">

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { signIn, useSession } from "next-auth/react";
 import { FcGoogle } from "react-icons/fc";
@@ -14,21 +14,20 @@ import bcrypt from "bcryptjs";
 
 export default function SignupPage() {
   const router = useRouter();
-  const { data: session, status } = useSession();
+  const { status } = useSession(); // removed unused `session`
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [loading, setLoading] = useState(false);
 
-  // 🔒 Redirect if already authenticated
+  // Redirect if already authenticated
   useEffect(() => {
     if (status === "authenticated") {
       router.replace("/dashboard");
     }
   }, [status, router]);
 
-  // ⏳ Show loading state while checking session
   if (status === "loading" || status === "authenticated") {
     return (
       <main className="min-h-screen flex items-center justify-center">
@@ -37,7 +36,7 @@ export default function SignupPage() {
     );
   }
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
 
     if (password !== confirmPassword) {
@@ -48,7 +47,7 @@ export default function SignupPage() {
     setLoading(true);
 
     try {
-      // ✅ Check if email already exists
+      // Check if email exists
       const { data: existingUser } = await supabase
         .from("users")
         .select("email")
@@ -57,7 +56,6 @@ export default function SignupPage() {
 
       if (existingUser) {
         toast.error("Email already in use. Please log in instead.");
-        setLoading(false);
         return;
       }
 

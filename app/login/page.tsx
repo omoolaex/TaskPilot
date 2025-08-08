@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { signIn, useSession } from "next-auth/react";
 import { FcGoogle } from "react-icons/fc";
@@ -14,23 +14,23 @@ import bcrypt from "bcryptjs";
 
 export default function LoginPage() {
   const router = useRouter();
-  const { data: session, status } = useSession();
+  const { status } = useSession(); // removed `session` since unused
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
 
-  // 🔒 Redirect if already authenticated
+  // Redirect if already authenticated
   useEffect(() => {
     if (status === "authenticated") {
       router.replace("/dashboard");
     }
   }, [status, router]);
 
-  // ⏳ Avoid flash while checking session
+  // Prevent rendering during session check or if logged in
   if (status === "loading" || status === "authenticated") return null;
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setLoading(true);
 
@@ -46,7 +46,7 @@ export default function LoginPage() {
       return;
     }
 
-    const valid = await bcrypt.compare(password, user.password);
+    const valid = await bcrypt.compare(password, user.password as string);
 
     if (!valid) {
       toast.error("Incorrect password.");
@@ -98,6 +98,7 @@ export default function LoginPage() {
             </Button>
           </div>
 
+          {/* Divider */}
           <div className="relative">
             <div className="absolute inset-0 flex items-center">
               <div className="w-full border-t border-muted" />
