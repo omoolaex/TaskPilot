@@ -1,4 +1,3 @@
-// app/settings/page.tsx
 "use client";
 
 import { useEffect, useState, useCallback, useMemo } from "react";
@@ -23,7 +22,11 @@ import Image from "next/image";
 type Settings = {
   theme: "system" | "light" | "dark";
   notifications: { email: boolean; push: boolean; sms: boolean };
-  privacy: { twoFactor: boolean; dataSharing: boolean; accountVisibility: "public" | "private" };
+  privacy: {
+    twoFactor: boolean;
+    dataSharing: boolean;
+    accountVisibility: "public" | "private";
+  };
   profile: { displayName: string; username: string; profilePicture: string };
   advanced: { betaFeatures: boolean };
 };
@@ -45,7 +48,7 @@ export default function SettingsPage() {
   const [settings, setSettings] = useState<Settings>(defaultSettings);
   const [savedSettings, setSavedSettings] = useState<Settings>(defaultSettings);
   const [loading, setLoading] = useState(false);
-  const [previewTheme, setPreviewTheme] = useState<"system" | "light" | "dark">("system");
+  const [previewTheme, setPreviewTheme] = useState<Settings["theme"]>("system");
 
   const isDirty = useMemo(
     () => JSON.stringify(settings) !== JSON.stringify(savedSettings),
@@ -56,31 +59,40 @@ export default function SettingsPage() {
     if (!userId) return;
     setLoading(true);
 
-    const { data, error } = await supabase
-      .from("settings")
-      .select("settings")
-      .eq("user_id", userId)
-      .single();
+    try {
+      const { data, error } = await supabase
+        .from("settings")
+        .select("settings")
+        .eq("user_id", userId)
+        .single();
 
-    // PGRST116 is PostgREST "No rows found" — not a fatal error here
-    if (error && (error.code as string) !== "PGRST116") {
+      if (error && (error.code as string) !== "PGRST116") {
+        console.error("Supabase error loading settings:", error);
+        toast.error("Failed to load settings");
+        setLoading(false);
+        return;
+      }
+
+      if (data?.settings) {
+        // Validate data.settings shape, fallback if corrupted
+        setSettings((prev) => ({
+          ...prev,
+          ...data.settings,
+        }));
+        setSavedSettings(data.settings);
+        setPreviewTheme(data.settings.theme ?? "system");
+      } else {
+        // No data found for user, initialize with default locally
+        setSettings(defaultSettings);
+        setSavedSettings(defaultSettings);
+        setPreviewTheme(defaultSettings.theme);
+      }
+    } catch (err) {
+      console.error("Unexpected error fetching settings:", err);
       toast.error("Failed to load settings");
+    } finally {
       setLoading(false);
-      return;
     }
-
-    if (data?.settings) {
-      setSettings(data.settings);
-      setSavedSettings(data.settings);
-      setPreviewTheme(data.settings.theme ?? "system");
-    } else {
-      // ensure defaults saved locally
-      setSettings(defaultSettings);
-      setSavedSettings(defaultSettings);
-      setPreviewTheme(defaultSettings.theme);
-    }
-
-    setLoading(false);
   }, [userId]);
 
   useEffect(() => {
@@ -88,7 +100,7 @@ export default function SettingsPage() {
   }, [fetchSettings]);
 
   useEffect(() => {
-    // preview theme immediately (not saved until Save)
+    // Immediately update preview theme (not saved until Save clicked)
     setTheme(previewTheme);
   }, [previewTheme, setTheme]);
 
@@ -97,25 +109,25 @@ export default function SettingsPage() {
     setLoading(true);
 
     try {
-      // Upsert JSON settings object into `settings` table.
-      // Requires `user_id` to be unique (unique index) in the DB.
       const { error } = await supabase
         .from("settings")
         .upsert({ user_id: userId, settings }, { onConflict: "user_id" });
 
-      if (error) throw error;
+      if (error) {
+        console.error("Error saving settings:", error);
+        throw error;
+      }
 
       setSavedSettings(settings);
       toast.success("Settings saved successfully");
       setTheme(settings.theme);
 
-      // ensure global rehydration: refresh and reload
+      // Refresh page to rehydrate state globally
       setTimeout(() => {
         router.refresh();
         void window.location.reload();
       }, 300);
     } catch (err) {
-      console.error(err);
       toast.error("Failed to save settings");
     } finally {
       setLoading(false);
@@ -126,7 +138,10 @@ export default function SettingsPage() {
     async (file: File) => {
       if (!userId) return;
       const fileExt = file.name.split(".").pop();
-      if (!fileExt) return toast.error("Invalid file");
+      if (!fileExt) {
+        toast.error("Invalid file type");
+        return;
+      }
       const filePath = `avatars/${userId}.${fileExt}`;
 
       const { error: uploadError } = await supabase.storage
@@ -134,11 +149,15 @@ export default function SettingsPage() {
         .upload(filePath, file, { upsert: true });
 
       if (uploadError) {
+        console.error("Upload error:", uploadError);
         toast.error("Upload failed");
         return;
       }
 
-      const { data: publicData } = supabase.storage.from("avatars").getPublicUrl(filePath);
+      const { data: publicData } = supabase.storage
+        .from("avatars")
+        .getPublicUrl(filePath);
+
       if (publicData?.publicUrl) {
         setSettings((prev) => ({
           ...prev,
@@ -154,14 +173,28 @@ export default function SettingsPage() {
 
   const logOutOtherSessions = useCallback(() => {
     toast.success("Other sessions logged out");
+    // TODO: Implement actual logic to invalidate other sessions if needed
   }, []);
 
   const deleteAccount = useCallback(async () => {
     if (!userId) return;
-    if (!confirm("Are you sure you want to delete your account? This is irreversible.")) return;
-    await supabase.rpc("delete_user_account", { uid: userId });
-    toast.success("Account deleted");
-  }, [userId]);
+    if (!confirm("Are you sure you want to delete your account? This action is irreversible.")) return;
+
+    try {
+      const { error } = await supabase.rpc("delete_user_account", { uid: userId });
+      if (error) {
+        console.error("Delete account error:", error);
+        toast.error("Failed to delete account");
+        return;
+      }
+      toast.success("Account deleted");
+      // Redirect or log out after account deletion
+      router.push("/");
+    } catch (err) {
+      console.error("Unexpected delete account error:", err);
+      toast.error("Failed to delete account");
+    }
+  }, [userId, router]);
 
   if (status === "loading") return <div>Loading...</div>;
   if (!session) return <div>Please login to access settings.</div>;
@@ -203,7 +236,10 @@ export default function SettingsPage() {
               <Switch
                 checked={value}
                 onCheckedChange={(checked) =>
-                  setSettings((p) => ({ ...p, notifications: { ...p.notifications, [key]: checked } }))
+                  setSettings((p) => ({
+                    ...p,
+                    notifications: { ...p.notifications, [key]: checked },
+                  }))
                 }
               />
             </div>
@@ -220,7 +256,10 @@ export default function SettingsPage() {
             <Switch
               checked={settings.privacy.twoFactor}
               onCheckedChange={(checked) =>
-                setSettings((p) => ({ ...p, privacy: { ...p.privacy, twoFactor: checked } }))
+                setSettings((p) => ({
+                  ...p,
+                  privacy: { ...p.privacy, twoFactor: checked },
+                }))
               }
             />
           </div>
@@ -229,7 +268,10 @@ export default function SettingsPage() {
             <Switch
               checked={settings.privacy.dataSharing}
               onCheckedChange={(checked) =>
-                setSettings((p) => ({ ...p, privacy: { ...p.privacy, dataSharing: checked } }))
+                setSettings((p) => ({
+                  ...p,
+                  privacy: { ...p.privacy, dataSharing: checked },
+                }))
               }
             />
           </div>
@@ -238,7 +280,10 @@ export default function SettingsPage() {
             <Select
               value={settings.privacy.accountVisibility}
               onValueChange={(v) =>
-                setSettings((p) => ({ ...p, privacy: { ...p.privacy, accountVisibility: v as "public" | "private" } }))
+                setSettings((p) => ({
+                  ...p,
+                  privacy: { ...p.privacy, accountVisibility: v as "public" | "private" },
+                }))
               }
             >
               <SelectTrigger>
@@ -275,24 +320,35 @@ export default function SettingsPage() {
             <Input
               type="file"
               accept="image/*"
-              onChange={(e) => e.target.files && handleProfilePictureUpload(e.target.files[0])}
+              onChange={(e) =>
+                e.target.files && handleProfilePictureUpload(e.target.files[0])
+              }
             />
           </div>
           <Input
             placeholder="Display Name"
             value={settings.profile.displayName}
             onChange={(e) =>
-              setSettings((p) => ({ ...p, profile: { ...p.profile, displayName: e.target.value } }))
+              setSettings((p) => ({
+                ...p,
+                profile: { ...p.profile, displayName: e.target.value },
+              }))
             }
           />
           <Input
             placeholder="Username"
             value={settings.profile.username}
             onChange={(e) =>
-              setSettings((p) => ({ ...p, profile: { ...p.profile, username: e.target.value } }))
+              setSettings((p) => ({
+                ...p,
+                profile: { ...p.profile, username: e.target.value },
+              }))
             }
           />
-          <Button onClick={() => router.push("/reset-password")} variant="outline">
+          <Button
+            onClick={() => router.push("/reset-password")}
+            variant="outline"
+          >
             Change Password
           </Button>
         </CardContent>
@@ -307,7 +363,10 @@ export default function SettingsPage() {
             <Switch
               checked={settings.advanced.betaFeatures}
               onCheckedChange={(checked) =>
-                setSettings((p) => ({ ...p, advanced: { ...p.advanced, betaFeatures: checked } }))
+                setSettings((p) => ({
+                  ...p,
+                  advanced: { ...p.advanced, betaFeatures: checked },
+                }))
               }
             />
           </div>
@@ -319,7 +378,11 @@ export default function SettingsPage() {
 
       {/* Actions */}
       <div className="flex justify-end gap-4">
-        <Button onClick={() => setSettings(savedSettings)} disabled={!isDirty || loading} variant="outline">
+        <Button
+          onClick={() => setSettings(savedSettings)}
+          disabled={!isDirty || loading}
+          variant="outline"
+        >
           Reset
         </Button>
         <Button onClick={saveSettings} disabled={!isDirty || loading}>
