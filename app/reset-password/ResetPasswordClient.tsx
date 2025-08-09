@@ -7,7 +7,6 @@ import { toast } from "sonner";
 export default function ResetPasswordClient() {
   const searchParams = useSearchParams();
   const router = useRouter();
-
   const token = searchParams.get("token");
 
   const [password, setPassword] = useState("");
