@@ -50,11 +50,18 @@ export default function SettingsPage() {
   const [loading, setLoading] = useState(false);
   const [previewTheme, setPreviewTheme] = useState<Settings["theme"]>("system");
 
+  // Password change states
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [passwordLoading, setPasswordLoading] = useState(false);
+
   const isDirty = useMemo(
     () => JSON.stringify(settings) !== JSON.stringify(savedSettings),
     [settings, savedSettings]
   );
 
+  // Fetch settings on mount
   const fetchSettings = useCallback(async () => {
     if (!userId) return;
     setLoading(true);
@@ -74,15 +81,10 @@ export default function SettingsPage() {
       }
 
       if (data?.settings) {
-        // Validate data.settings shape, fallback if corrupted
-        setSettings((prev) => ({
-          ...prev,
-          ...data.settings,
-        }));
+        setSettings((prev) => ({ ...prev, ...data.settings }));
         setSavedSettings(data.settings);
         setPreviewTheme(data.settings.theme ?? "system");
       } else {
-        // No data found for user, initialize with default locally
         setSettings(defaultSettings);
         setSavedSettings(defaultSettings);
         setPreviewTheme(defaultSettings.theme);
@@ -100,7 +102,6 @@ export default function SettingsPage() {
   }, [fetchSettings]);
 
   useEffect(() => {
-    // Immediately update preview theme (not saved until Save clicked)
     setTheme(previewTheme);
   }, [previewTheme, setTheme]);
 
@@ -122,7 +123,6 @@ export default function SettingsPage() {
       toast.success("Settings saved successfully");
       setTheme(settings.theme);
 
-      // Refresh page to rehydrate state globally
       setTimeout(() => {
         router.refresh();
         void window.location.reload();
@@ -163,7 +163,18 @@ export default function SettingsPage() {
           ...prev,
           profile: { ...prev.profile, profilePicture: publicData.publicUrl },
         }));
-        toast.success("Profile picture uploaded");
+
+        // Sync profile picture to users.image column
+        const { error: updateError } = await supabase
+          .from("users")
+          .update({ image: publicData.publicUrl })
+          .eq("id", userId);
+
+        if (updateError) {
+          toast.error("Failed to update profile picture in user profile");
+        } else {
+          toast.success("Profile picture uploaded");
+        }
       } else {
         toast.error("Failed to get public URL");
       }
@@ -178,7 +189,12 @@ export default function SettingsPage() {
 
   const deleteAccount = useCallback(async () => {
     if (!userId) return;
-    if (!confirm("Are you sure you want to delete your account? This action is irreversible.")) return;
+    if (
+      !confirm(
+        "Are you sure you want to delete your account? This action is irreversible."
+      )
+    )
+      return;
 
     try {
       const { error } = await supabase.rpc("delete_user_account", { uid: userId });
@@ -188,7 +204,6 @@ export default function SettingsPage() {
         return;
       }
       toast.success("Account deleted");
-      // Redirect or log out after account deletion
       router.push("/");
     } catch (err) {
       console.error("Unexpected delete account error:", err);
@@ -196,25 +211,72 @@ export default function SettingsPage() {
     }
   }, [userId, router]);
 
-  if (status === "loading") return <div>Loading...</div>;
-  if (!session) return <div>Please login to access settings.</div>;
+  // Password change handler
+  const handleChangePassword = useCallback(async () => {
+    if (newPassword !== confirmPassword) {
+      toast.error("New passwords do not match");
+      return;
+    }
+    if (!currentPassword || !newPassword) {
+      toast.error("Please fill in all password fields");
+      return;
+    }
+    setPasswordLoading(true);
+
+    try {
+      const res = await fetch("/api/change-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ currentPassword, newPassword }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) throw new Error(data.error || "Failed to change password");
+
+      toast.success("Password changed successfully");
+
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
+    } catch (err: any) {
+      toast.error(err.message);
+    } finally {
+      setPasswordLoading(false);
+    }
+  }, [currentPassword, newPassword, confirmPassword]);
+
+  if (status === "loading")
+    return (
+      <div className="text-center py-12 text-lg font-semibold">Loading...</div>
+    );
+  if (!session)
+    return (
+      <div className="text-center py-12 text-lg font-semibold">
+        Please login to access settings.
+      </div>
+    );
 
   return (
-    <main className="max-w-3xl mx-auto p-6 space-y-8">
+    <main className="max-w-3xl mx-auto p-6 space-y-10">
       <h1 className="text-4xl font-extrabold text-center">Settings</h1>
 
       {/* Appearance */}
       <Card>
         <CardContent className="space-y-4">
           <h2 className="text-2xl font-semibold">Appearance</h2>
+          <label htmlFor="themeSelect" className="block mb-2 font-medium cursor-pointer">
+            Theme
+          </label>
           <Select
             value={settings.theme}
             onValueChange={(v) => {
               setSettings((p) => ({ ...p, theme: v as Settings["theme"] }));
               setPreviewTheme(v as Settings["theme"]);
             }}
+            disabled={loading}
           >
-            <SelectTrigger aria-label="Select Theme">
+            <SelectTrigger id="themeSelect" aria-label="Select Theme">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -231,7 +293,12 @@ export default function SettingsPage() {
         <CardContent className="space-y-4">
           <h2 className="text-2xl font-semibold">Notifications</h2>
           {Object.entries(settings.notifications).map(([key, value]) => (
-            <div key={key} className="flex items-center justify-between">
+            <div
+              key={key}
+              className="flex items-center justify-between"
+              role="group"
+              aria-label={`Toggle ${key} notifications`}
+            >
               <span className="capitalize">{key}</span>
               <Switch
                 checked={value}
@@ -241,6 +308,7 @@ export default function SettingsPage() {
                     notifications: { ...p.notifications, [key]: checked },
                   }))
                 }
+                disabled={loading}
               />
             </div>
           ))}
@@ -252,8 +320,11 @@ export default function SettingsPage() {
         <CardContent className="space-y-4">
           <h2 className="text-2xl font-semibold">Privacy & Security</h2>
           <div className="flex items-center justify-between">
-            <span>Two-Factor Authentication</span>
+            <label htmlFor="twoFactor" className="cursor-pointer">
+              Two-Factor Authentication
+            </label>
             <Switch
+              id="twoFactor"
               checked={settings.privacy.twoFactor}
               onCheckedChange={(checked) =>
                 setSettings((p) => ({
@@ -261,11 +332,15 @@ export default function SettingsPage() {
                   privacy: { ...p.privacy, twoFactor: checked },
                 }))
               }
+              disabled={loading}
             />
           </div>
           <div className="flex items-center justify-between">
-            <span>Data Sharing Consent</span>
+            <label htmlFor="dataSharing" className="cursor-pointer">
+              Data Sharing Consent
+            </label>
             <Switch
+              id="dataSharing"
               checked={settings.privacy.dataSharing}
               onCheckedChange={(checked) =>
                 setSettings((p) => ({
@@ -273,10 +348,16 @@ export default function SettingsPage() {
                   privacy: { ...p.privacy, dataSharing: checked },
                 }))
               }
+              disabled={loading}
             />
           </div>
           <div>
-            <label className="block mb-2">Account Visibility</label>
+            <label
+              htmlFor="accountVisibility"
+              className="block mb-2 font-medium cursor-pointer"
+            >
+              Account Visibility
+            </label>
             <Select
               value={settings.privacy.accountVisibility}
               onValueChange={(v) =>
@@ -285,8 +366,9 @@ export default function SettingsPage() {
                   privacy: { ...p.privacy, accountVisibility: v as "public" | "private" },
                 }))
               }
+              disabled={loading}
             >
-              <SelectTrigger>
+              <SelectTrigger id="accountVisibility">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -295,7 +377,7 @@ export default function SettingsPage() {
               </SelectContent>
             </Select>
           </div>
-          <Button variant="outline" onClick={logOutOtherSessions}>
+          <Button variant="outline" onClick={logOutOtherSessions} disabled={loading}>
             Log Out Other Sessions
           </Button>
         </CardContent>
@@ -306,7 +388,7 @@ export default function SettingsPage() {
         <CardContent className="space-y-4">
           <h2 className="text-2xl font-semibold">Account & Profile</h2>
           <div>
-            <label className="block mb-2">Profile Picture</label>
+            <label className="block mb-2 font-medium">Profile Picture</label>
             {settings.profile.profilePicture && (
               <Image
                 src={settings.profile.profilePicture}
@@ -323,9 +405,14 @@ export default function SettingsPage() {
               onChange={(e) =>
                 e.target.files && handleProfilePictureUpload(e.target.files[0])
               }
+              disabled={loading}
             />
           </div>
+          <label htmlFor="displayName" className="block mt-2 mb-1 font-medium">
+            Display Name
+          </label>
           <Input
+            id="displayName"
             placeholder="Display Name"
             value={settings.profile.displayName}
             onChange={(e) =>
@@ -334,8 +421,13 @@ export default function SettingsPage() {
                 profile: { ...p.profile, displayName: e.target.value },
               }))
             }
+            disabled={loading}
           />
+          <label htmlFor="username" className="block mt-2 mb-1 font-medium">
+            Username
+          </label>
           <Input
+            id="username"
             placeholder="Username"
             value={settings.profile.username}
             onChange={(e) =>
@@ -344,12 +436,53 @@ export default function SettingsPage() {
                 profile: { ...p.profile, username: e.target.value },
               }))
             }
+            disabled={loading}
+          />
+        </CardContent>
+      </Card>
+
+      {/* Change Password */}
+      <Card>
+        <CardContent className="space-y-4">
+          <h2 className="text-2xl font-semibold">Change Password</h2>
+          <label htmlFor="currentPassword" className="block mb-1 font-medium">
+            Current Password
+          </label>
+          <Input
+            id="currentPassword"
+            type="password"
+            placeholder="Current Password"
+            value={currentPassword}
+            onChange={(e) => setCurrentPassword(e.target.value)}
+            disabled={passwordLoading || loading}
+          />
+          <label htmlFor="newPassword" className="block mb-1 font-medium">
+            New Password
+          </label>
+          <Input
+            id="newPassword"
+            type="password"
+            placeholder="New Password"
+            value={newPassword}
+            onChange={(e) => setNewPassword(e.target.value)}
+            disabled={passwordLoading || loading}
+          />
+          <label htmlFor="confirmPassword" className="block mb-1 font-medium">
+            Confirm New Password
+          </label>
+          <Input
+            id="confirmPassword"
+            type="password"
+            placeholder="Confirm New Password"
+            value={confirmPassword}
+            onChange={(e) => setConfirmPassword(e.target.value)}
+            disabled={passwordLoading || loading}
           />
           <Button
-            onClick={() => router.push("/reset-password")}
-            variant="outline"
+            onClick={handleChangePassword}
+            disabled={passwordLoading || loading}
           >
-            Change Password
+            {passwordLoading ? "Updating..." : "Update Password"}
           </Button>
         </CardContent>
       </Card>
@@ -359,8 +492,11 @@ export default function SettingsPage() {
         <CardContent className="space-y-4">
           <h2 className="text-2xl font-semibold">Advanced</h2>
           <div className="flex items-center justify-between">
-            <span>Beta Features</span>
+            <label htmlFor="betaFeatures" className="cursor-pointer">
+              Beta Features
+            </label>
             <Switch
+              id="betaFeatures"
               checked={settings.advanced.betaFeatures}
               onCheckedChange={(checked) =>
                 setSettings((p) => ({
@@ -368,9 +504,10 @@ export default function SettingsPage() {
                   advanced: { ...p.advanced, betaFeatures: checked },
                 }))
               }
+              disabled={loading}
             />
           </div>
-          <Button variant="destructive" onClick={deleteAccount}>
+          <Button variant="destructive" onClick={deleteAccount} disabled={loading}>
             Delete Account
           </Button>
         </CardContent>
