@@ -46,10 +46,17 @@ export async function POST(req: NextRequest) {
     }
 
     return NextResponse.json({ message: "Password updated successfully" });
-  } catch (error: any) {
-    return NextResponse.json(
-      { error: error.message || "Internal error" },
-      { status: 500 }
-    );
+  } catch (error: unknown) {
+    if (error instanceof Error) {
+      return NextResponse.json(
+        { error: error.message },
+        { status: 500 }
+      );
+    } else {
+      return NextResponse.json(
+        { error: "Internal error" },
+        { status: 500 }
+      );
+    }
   }
 }

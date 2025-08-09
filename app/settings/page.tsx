@@ -89,8 +89,8 @@ export default function SettingsPage() {
         setSavedSettings(defaultSettings);
         setPreviewTheme(defaultSettings.theme);
       }
-    } catch (err: unknown) {
-      console.error("Unexpected error fetching settings:", err);
+    } catch (_err: unknown) {
+      console.error("Unexpected error fetching settings:", _err);
       toast.error("Failed to load settings");
     } finally {
       setLoading(false);
@@ -266,7 +266,10 @@ export default function SettingsPage() {
       <Card>
         <CardContent className="space-y-4">
           <h2 className="text-2xl font-semibold">Appearance</h2>
-          <label htmlFor="themeSelect" className="block mb-2 font-medium cursor-pointer">
+          <label
+            htmlFor="themeSelect"
+            className="block mb-2 font-medium cursor-pointer"
+          >
             Theme
           </label>
           <Select
