@@ -128,6 +128,7 @@ export default function SettingsPage() {
         void window.location.reload();
       }, 300);
     } catch (err: unknown) {
+      console.error("Failed to save settings:", err);
       toast.error("Failed to save settings");
     } finally {
       setLoading(false);
