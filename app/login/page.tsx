@@ -1,4 +1,3 @@
-// app/login/page.tsx
 "use client";
 
 import { useEffect, useState } from "react";
@@ -6,16 +5,13 @@ import { useRouter } from "next/navigation";
 import { signIn, useSession } from "next-auth/react";
 import { FcGoogle } from "react-icons/fc";
 import { FaGithub } from "react-icons/fa";
-import { supabase } from "@/lib/supabase";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { toast } from "sonner";
-import bcrypt from "bcryptjs";
 
 export default function LoginPage() {
   const router = useRouter();
-  // only need status here (we don't use `session` directly)
   const { status } = useSession();
 
   const [email, setEmail] = useState("");
@@ -34,31 +30,21 @@ export default function LoginPage() {
     e.preventDefault();
     setLoading(true);
 
-    const { data: user, error } = await supabase
-      .from("users")
-      .select("*")
-      .eq("email", email)
-      .single();
-
-    if (error || !user) {
-      toast.error("Invalid email or user not found.");
-      setLoading(false);
-      return;
-    }
-
-    const valid = await bcrypt.compare(password, user.password);
-
-    if (!valid) {
-      toast.error("Incorrect password.");
-      setLoading(false);
-      return;
-    }
-
     const res = await signIn("credentials", {
       redirect: false,
       email,
       password,
     });
+
+    if (res?.error) {
+      if (res.error === "Email not verified") {
+        toast.error("Your email is not verified yet. Please check your inbox.");
+      } else {
+        toast.error(res.error || "Authentication failed.");
+      }
+      setLoading(false);
+      return;
+    }
 
     if (res?.ok) {
       toast.success("Welcome back!");
@@ -66,7 +52,6 @@ export default function LoginPage() {
     } else {
       toast.error("Authentication failed.");
     }
-
     setLoading(false);
   };
 
@@ -103,15 +88,34 @@ export default function LoginPage() {
               <div className="w-full border-t border-muted" />
             </div>
             <div className="relative flex justify-center text-xs uppercase">
-              <span className="bg-background px-2 text-muted-foreground">or continue with email</span>
+              <span className="bg-background px-2 text-muted-foreground">
+                or continue with email
+              </span>
             </div>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-4">
-            <Input type="email" placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} required />
-            <Input type="password" placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} required />
+            <Input
+              type="email"
+              placeholder="Email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+            />
+            <Input
+              type="password"
+              placeholder="Password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+            />
 
-            <Button type="button" variant="link" className="px-0 text-sm text-muted-foreground hover:underline" onClick={() => router.push("/forgot-password")}>
+            <Button
+              type="button"
+              variant="link"
+              className="px-0 text-sm text-muted-foreground hover:underline"
+              onClick={() => router.push("/forgot-password")}
+            >
               Forgot Password?
             </Button>
 
@@ -119,7 +123,12 @@ export default function LoginPage() {
               {loading ? "Signing in..." : "Sign In"}
             </Button>
 
-            <Button type="button" variant="ghost" className="w-full" onClick={() => router.push("/signup")}>
+            <Button
+              type="button"
+              variant="ghost"
+              className="w-full"
+              onClick={() => router.push("/signup")}
+            >
               Don’t have an account? Sign up
             </Button>
           </form>

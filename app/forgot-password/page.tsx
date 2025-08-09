@@ -1,32 +1,42 @@
-"use client"
+"use client";
 
-import { useState } from "react"
-import { useRouter } from "next/navigation"
-import { Input } from "@/components/ui/input"
-import { Button } from "@/components/ui/button"
-import { Card, CardContent } from "@/components/ui/card"
-import { toast } from "sonner"
-import { supabase } from "@/lib/supabase"
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { toast } from "sonner";
 
 export default function ForgotPasswordPage() {
-  const [email, setEmail] = useState("")
-  const router = useRouter()
+  const [email, setEmail] = useState("");
+  const [loading, setLoading] = useState(false);
+  const router = useRouter();
 
   const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
+    e.preventDefault();
+    setLoading(true);
 
-    const origin = typeof window !== "undefined" ? window.location.origin : ""
-    const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${origin}/reset-password`,
-    })
+    try {
+      const res = await fetch("/api/auth/request-password-reset", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      });
 
-    if (error) {
-      toast.error(error.message || "Failed to send reset link.")
-    } else {
-      toast.success("Password reset link sent! Check your email.")
-      router.push("/verify-email")
+      const data = await res.json();
+
+      if (!res.ok) {
+        toast.error(data.error || "Failed to send reset link.");
+      } else {
+        toast.success("Password reset link sent! Check your email.");
+        router.push("/login");
+      }
+    } catch (err) {
+      toast.error("Unexpected error occurred.");
+    } finally {
+      setLoading(false);
     }
-  }
+  };
 
   return (
     <main className="min-h-screen flex items-center justify-center p-4">
@@ -40,9 +50,10 @@ export default function ForgotPasswordPage() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
+              disabled={loading}
             />
-            <Button type="submit" className="w-full">
-              Send Reset Link
+            <Button type="submit" className="w-full" disabled={loading}>
+              {loading ? "Sending..." : "Send Reset Link"}
             </Button>
             <Button
               type="button"
@@ -56,5 +67,5 @@ export default function ForgotPasswordPage() {
         </CardContent>
       </Card>
     </main>
-  )
+  );
 }

@@ -1,12 +1,12 @@
-// /app/api/auth/[...nextauth]/route.ts
-import NextAuth from "next-auth"
-import GitHubProvider from "next-auth/providers/github"
-import GoogleProvider from "next-auth/providers/google"
-import CredentialsProvider from "next-auth/providers/credentials"
-import { supabase } from "@/lib/supabase"
-import bcrypt from "bcrypt"
+import NextAuth, { NextAuthOptions } from "next-auth";
+import GitHubProvider from "next-auth/providers/github";
+import GoogleProvider from "next-auth/providers/google";
+import CredentialsProvider from "next-auth/providers/credentials";
+import bcrypt from "bcryptjs"; // Use bcryptjs for better compatibility
+import { getSupabaseServerClient } from "@/lib/supabaseServer";
+import { syncUserWithSupabase } from "@/lib/syncUserWithSupabase";
 
-const handler = NextAuth({
+export const authOptions: NextAuthOptions = {
   providers: [
     GoogleProvider({
       clientId: process.env.GOOGLE_CLIENT_ID!,
@@ -23,30 +23,38 @@ const handler = NextAuth({
         password: { label: "Password", type: "password" },
       },
       async authorize(credentials) {
-        const { email, password } = credentials as {
-          email: string
-          password: string
-        }
+        if (!credentials?.email || !credentials?.password) return null;
 
+        const supabase = await getSupabaseServerClient();
+
+        // Fetch user by email, include email_verified field
         const { data: user, error } = await supabase
           .from("users")
-          .select("*")
-          .eq("email", email)
-          .single()
+          .select("id, name, email, image, role, password_hash, email_verified")
+          .eq("email", credentials.email)
+          .single();
 
-        if (error || !user || !user.password) return null
+        if (error || !user?.password_hash) {
+          console.error("Authorize error fetching user or no password hash:", error);
+          return null;
+        }
 
-        const isValid = await bcrypt.compare(password, user.password)
-        if (!isValid) return null
+        // Throw error if email not verified
+        if (!user.email_verified) {
+          throw new Error("Email not verified");
+        }
+
+        const isValid = await bcrypt.compare(credentials.password, user.password_hash);
+        if (!isValid) return null;
 
         return {
           id: user.id,
           name: user.name,
           email: user.email,
           image: user.image,
-          role: user.role || "user",
+          role: user.role ?? "user",
           provider: "credentials",
-        }
+        };
       },
     }),
   ],
@@ -64,44 +72,61 @@ const handler = NextAuth({
   callbacks: {
     async jwt({ token, user }) {
       if (user) {
-        token.id = user.id
-        token.role = user.role
-        token.provider = user.provider
+        token.supabaseId = user.id;
+        token.role = user.role;
+        token.provider = user.provider;
       }
-      return token
+      return token;
     },
 
     async session({ session, token }) {
-      session.user.id = token.id as string
-      session.user.role = token.role as string
-      session.user.provider = token.provider as string
-      return session
+      if (token) {
+        session.user.id = token.supabaseId as string;
+        session.user.role = token.role as string;
+        session.user.provider = token.provider as string;
+      }
+      return session;
     },
 
     async signIn({ user, account }) {
-      if (account?.provider === "google" || account?.provider === "github") {
-        const { data, error } = await supabase
-          .from("users")
-          .select("id")
-          .eq("email", user.email)
-          .single()
-
-        if (!data && !error) {
-          await supabase.from("users").insert([
-            {
-              email: user.email,
-              name: user.name,
-              image: user.image,
-              provider: account.provider,
-              role: "user",
-            },
-          ])
-        }
+      if (!user?.email) {
+        console.error("signIn: Missing user email");
+        return false;
       }
 
-      return true
+      // Use provider string from account if available, fallback to credentials
+      const providerName = account?.provider ?? "credentials";
+
+      const synced = await syncUserWithSupabase({
+        email: user.email,
+        name: user.name ?? undefined,
+        image: user.image ?? undefined,
+        provider: providerName,
+      });
+
+      if (!synced) {
+        console.error("signIn: Failed to sync user with Supabase");
+        return false;
+      }
+
+      // Attach Supabase user ID to user object for jwt callback
+      user.id = synced.supabaseId;
+
+      // Set RLS context for this user on server
+      const supabase = await getSupabaseServerClient();
+      const { error } = await supabase.rpc("set_current_user_id", {
+        uid: synced.supabaseId,
+      });
+
+      if (error) {
+        console.error("signIn: Failed to set RLS context:", error);
+        return false;
+      }
+
+      return true;
     },
   },
-})
+};
 
-export { handler as GET, handler as POST }
+const handler = NextAuth(authOptions);
+export { handler as GET, handler as POST };
