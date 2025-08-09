@@ -13,12 +13,18 @@ export default function ResetPasswordPage() {
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const [tokenValid, setTokenValid] = useState(true);
 
   useEffect(() => {
-    if (!token) {
-      toast.error("Invalid or missing reset token.");
-      router.push("/login");
+    async function checkToken() {
+      if (!token) {
+        setTokenValid(false);
+        toast.error("Invalid or missing reset token.");
+        // Wait a moment before redirecting so user can see the toast
+        setTimeout(() => router.push("/login"), 2000);
+      }
     }
+    checkToken();
   }, [token, router]);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -58,11 +64,16 @@ export default function ResetPasswordPage() {
     }
   };
 
+  if (!tokenValid) {
+    return null; // Render nothing while redirecting if token invalid
+  }
+
   return (
     <main className="min-h-screen flex items-center justify-center p-4">
       <form
         onSubmit={handleSubmit}
         className="max-w-sm w-full space-y-6 border p-6 rounded-md shadow"
+        aria-disabled={loading}
       >
         <h2 className="text-xl font-bold text-center">Set New Password</h2>
 
@@ -73,6 +84,8 @@ export default function ResetPasswordPage() {
           onChange={(e) => setPassword(e.target.value)}
           required
           disabled={loading}
+          minLength={6}
+          aria-label="New password"
           className="w-full px-4 py-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-600"
         />
         <input
@@ -82,6 +95,8 @@ export default function ResetPasswordPage() {
           onChange={(e) => setConfirmPassword(e.target.value)}
           required
           disabled={loading}
+          minLength={6}
+          aria-label="Confirm new password"
           className="w-full px-4 py-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-600"
         />
 
