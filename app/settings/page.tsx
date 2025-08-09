@@ -41,7 +41,7 @@ const defaultSettings: Settings = {
 
 export default function SettingsPage() {
   const { data: session, status } = useSession();
-  const userId = session?.user?.id as string | undefined;
+  const userId = session?.user?.id;
   const { setTheme } = useTheme();
   const router = useRouter();
 
@@ -50,7 +50,6 @@ export default function SettingsPage() {
   const [loading, setLoading] = useState(false);
   const [previewTheme, setPreviewTheme] = useState<Settings["theme"]>("system");
 
-  // Password change states
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -61,7 +60,7 @@ export default function SettingsPage() {
     [settings, savedSettings]
   );
 
-  // Fetch settings on mount
+  // Fetch user settings on mount or userId change
   const fetchSettings = useCallback(async () => {
     if (!userId) return;
     setLoading(true);
@@ -76,7 +75,6 @@ export default function SettingsPage() {
       if (error && (error.code as string) !== "PGRST116") {
         console.error("Supabase error loading settings:", error);
         toast.error("Failed to load settings");
-        setLoading(false);
         return;
       }
 
@@ -89,8 +87,8 @@ export default function SettingsPage() {
         setSavedSettings(defaultSettings);
         setPreviewTheme(defaultSettings.theme);
       }
-    } catch (_err: unknown) {
-      console.error("Unexpected error fetching settings:", _err);
+    } catch (err) {
+      console.error("Unexpected error fetching settings:", err);
       toast.error("Failed to load settings");
     } finally {
       setLoading(false);
@@ -101,6 +99,7 @@ export default function SettingsPage() {
     void fetchSettings();
   }, [fetchSettings]);
 
+  // Sync preview theme with next-themes
   useEffect(() => {
     setTheme(previewTheme);
   }, [previewTheme, setTheme]);
@@ -114,10 +113,7 @@ export default function SettingsPage() {
         .from("settings")
         .upsert({ user_id: userId, settings }, { onConflict: "user_id" });
 
-      if (error) {
-        console.error("Error saving settings:", error);
-        throw error;
-      }
+      if (error) throw error;
 
       setSavedSettings(settings);
       toast.success("Settings saved successfully");
@@ -127,13 +123,13 @@ export default function SettingsPage() {
         router.refresh();
         void window.location.reload();
       }, 300);
-    } catch (err: unknown) {
+    } catch (err) {
       console.error("Failed to save settings:", err);
       toast.error("Failed to save settings");
     } finally {
       setLoading(false);
     }
-  }, [settings, setTheme, userId, router]);
+  }, [settings, userId, router, setTheme]);
 
   const handleProfilePictureUpload = useCallback(
     async (file: File) => {
@@ -165,14 +161,13 @@ export default function SettingsPage() {
           profile: { ...prev.profile, profilePicture: publicData.publicUrl },
         }));
 
-        // Sync profile picture to users.image column
         const { error: updateError } = await supabase
           .from("users")
           .update({ image: publicData.publicUrl })
           .eq("id", userId);
 
         if (updateError) {
-          toast.error("Failed to update profile picture in user profile");
+          toast.error("Failed to update profile picture");
         } else {
           toast.success("Profile picture uploaded");
         }
@@ -185,7 +180,7 @@ export default function SettingsPage() {
 
   const logOutOtherSessions = useCallback(() => {
     toast.success("Other sessions logged out");
-    // TODO: Implement actual logic to invalidate other sessions if needed
+    // Implement session invalidation logic here
   }, []);
 
   const deleteAccount = useCallback(async () => {
@@ -206,13 +201,12 @@ export default function SettingsPage() {
       }
       toast.success("Account deleted");
       router.push("/");
-    } catch (err: unknown) {
+    } catch (err) {
       console.error("Unexpected delete account error:", err);
       toast.error("Failed to delete account");
     }
   }, [userId, router]);
 
-  // Password change handler
   const handleChangePassword = useCallback(async () => {
     if (newPassword !== confirmPassword) {
       toast.error("New passwords do not match");
@@ -240,7 +234,7 @@ export default function SettingsPage() {
       setCurrentPassword("");
       setNewPassword("");
       setConfirmPassword("");
-    } catch (err: unknown) {
+    } catch (err) {
       if (err instanceof Error) toast.error(err.message);
       else toast.error("Failed to change password");
     } finally {
@@ -368,7 +362,10 @@ export default function SettingsPage() {
               onValueChange={(v) =>
                 setSettings((p) => ({
                   ...p,
-                  privacy: { ...p.privacy, accountVisibility: v as "public" | "private" },
+                  privacy: {
+                    ...p.privacy,
+                    accountVisibility: v as "public" | "private",
+                  },
                 }))
               }
               disabled={loading}
