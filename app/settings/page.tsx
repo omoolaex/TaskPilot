@@ -89,7 +89,7 @@ export default function SettingsPage() {
         setSavedSettings(defaultSettings);
         setPreviewTheme(defaultSettings.theme);
       }
-    } catch (err) {
+    } catch (err: unknown) {
       console.error("Unexpected error fetching settings:", err);
       toast.error("Failed to load settings");
     } finally {
@@ -127,7 +127,7 @@ export default function SettingsPage() {
         router.refresh();
         void window.location.reload();
       }, 300);
-    } catch (err) {
+    } catch (err: unknown) {
       toast.error("Failed to save settings");
     } finally {
       setLoading(false);
@@ -205,7 +205,7 @@ export default function SettingsPage() {
       }
       toast.success("Account deleted");
       router.push("/");
-    } catch (err) {
+    } catch (err: unknown) {
       console.error("Unexpected delete account error:", err);
       toast.error("Failed to delete account");
     }
@@ -239,8 +239,9 @@ export default function SettingsPage() {
       setCurrentPassword("");
       setNewPassword("");
       setConfirmPassword("");
-    } catch (err: any) {
-      toast.error(err.message);
+    } catch (err: unknown) {
+      if (err instanceof Error) toast.error(err.message);
+      else toast.error("Failed to change password");
     } finally {
       setPasswordLoading(false);
     }
