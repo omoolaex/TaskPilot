@@ -2,7 +2,7 @@
 import { cookies } from "next/headers"
 import { createServerComponentClient } from "@supabase/auth-helpers-nextjs"
 import { getServerSession } from "next-auth"
-import { authOptions } from "@/app/api/auth/[...nextauth]/route"
+import { authOptions } from "@/lib/authOptions"
 import { createClient } from "@supabase/supabase-js"
 
 /**
