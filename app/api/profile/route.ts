@@ -3,7 +3,7 @@ import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/authOptions";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
-export async function GET(_: NextRequest) {
+export async function GET() {
   try {
     const session = await getServerSession(authOptions);
     if (!session?.user?.email) {
@@ -30,9 +30,9 @@ export async function GET(_: NextRequest) {
       image: data.image,
       emailVerified: data.email_verified,
     });
-  } catch (error) {
+  } catch (_error: unknown) {
     const message =
-      error instanceof Error ? error.message : "Unknown server error";
+      _error instanceof Error ? _error.message : "Unknown server error";
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
@@ -80,9 +80,9 @@ export async function POST(req: NextRequest) {
       image: data.image,
       emailVerified: data.email_verified,
     });
-  } catch (error) {
+  } catch (_error: unknown) {
     const message =
-      error instanceof Error ? error.message : "Unknown server error";
+      _error instanceof Error ? _error.message : "Unknown server error";
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

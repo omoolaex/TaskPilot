@@ -38,9 +38,9 @@ export default function ForgotPasswordPage() {
         toast.success("Password reset link sent! Check your email.");
         router.push("/login");
       }
-    } catch (err: unknown) {
-      toast.error("Unexpected error occurred.");
-    } finally {
+      } catch {
+        toast.error("Unexpected error occurred.");
+      } finally {
       setLoading(false);
     }
   };

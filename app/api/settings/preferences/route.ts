@@ -7,27 +7,27 @@ interface PreferencesRequestBody {
   theme?: string;
   language?: string;
   notifications?: boolean;
-  privacyMode?: boolean;
-  defaultDashboard?: string;
-  aiTone?: string;
-  favoriteCategories?: string[];
+  privacy_mode?: boolean;
+  default_dashboard?: string;
+  ai_tone?: string;
+  favorite_categories?: string[];
 }
 
 // Helper to map DB snake_case to camelCase
-function mapPrefsToCamelCase(prefs: any) {
+function mapPrefsToCamelCase(prefs: PreferencesRequestBody) {
   if (!prefs) return null;
   return {
     theme: prefs.theme,
     language: prefs.language,
     notifications: prefs.notifications,
-    privacyMode: prefs.privacy_mode,
+    privacy_mode: prefs.privacy_mode,
     defaultDashboard: prefs.default_dashboard,
     aiTone: prefs.ai_tone,
     favoriteCategories: prefs.favorite_categories,
   };
 }
 
-export async function GET(_: NextRequest) {
+export async function GET() {
   try {
     const session = await getServerSession(authOptions);
 
@@ -83,10 +83,10 @@ export async function POST(request: NextRequest) {
       theme: body.theme ?? "light",
       language: body.language ?? "en",
       notifications: body.notifications ?? true,
-      privacy_mode: body.privacyMode ?? false,
-      default_dashboard: body.defaultDashboard ?? "overview",
-      ai_tone: body.aiTone ?? "neutral",
-      favorite_categories: body.favoriteCategories ?? [],
+      privacy_mode: body.privacy_mode ?? false,
+      default_dashboard: body.default_dashboard ?? "overview",
+      ai_tone: body.ai_tone ?? "neutral",
+      favorite_categories: body.favorite_categories ?? [],
     };
 
     const { data, error } = await supabaseAdmin
