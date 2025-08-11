@@ -193,18 +193,38 @@ export default function SettingsPage() {
     }
   };
 
-  // Preferences save handler (simulate)
-  const handlePreferencesSave = async () => {
-    setSaving(true);
-    try {
-      await new Promise((res) => setTimeout(res, 800));
-      toast.success("Preferences saved!");
-    } catch {
-      toast.error("Failed to save preferences.");
-    } finally {
-      setSaving(false);
+const handlePreferencesSave = async () => {
+  setSaving(true);
+  try {
+    const res = await fetch("/api/settings/preferences", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "credentials": "include",
+      },
+      body: JSON.stringify(preferences),
+    });
+
+    if (!res.ok) {
+      const errorData = await res.json();
+      throw new Error(errorData.error || "Failed to save preferences");
     }
-  };
+
+    const savedPrefs = await res.json();
+    setPreferences((prev) => ({
+      ...prev,
+      // Optionally update with any server-processed preferences
+      ...savedPrefs,
+      favoriteCategories: savedPrefs.favorite_categories || prev.favoriteCategories,
+    }));
+
+    toast.success("Preferences saved!");
+  } catch (error: any) {
+    toast.error(error.message || "Failed to save preferences.");
+  } finally {
+    setSaving(false);
+  }
+};
 
   // Detect profile form changes
   const isProfileDirty = name !== originalName || image !== originalImage;
@@ -337,7 +357,7 @@ export default function SettingsPage() {
       </Card>
 
       {/* Preferences */}
-      <Card title="Preferences">
+      <Card title="App Preferences">
         <Select
           label="Theme"
           value={preferences.theme}
@@ -365,45 +385,6 @@ export default function SettingsPage() {
             setPreferences((p) => ({ ...p, notifications: e.target.checked }))
           }
         />
-        <Checkbox
-          label="Enable Privacy Mode"
-          checked={preferences.privacyMode}
-          onChange={(e) =>
-            setPreferences((p) => ({ ...p, privacyMode: e.target.checked }))
-          }
-        />
-        <Select
-          label="Default Dashboard"
-          value={preferences.defaultDashboard}
-          onChange={(e) =>
-            setPreferences((p) => ({ ...p, defaultDashboard: e.target.value }))
-          }
-          options={[
-            { value: "overview", label: "Overview" },
-            { value: "projects", label: "Projects" },
-            { value: "analytics", label: "Analytics" },
-          ]}
-        />
-        <Select
-          label="AI Tone"
-          value={preferences.aiTone}
-          onChange={(e) => setPreferences((p) => ({ ...p, aiTone: e.target.value }))}
-          options={[
-            { value: "friendly", label: "Friendly" },
-            { value: "neutral", label: "Neutral" },
-            { value: "formal", label: "Formal" },
-          ]}
-        />
-        <div>
-          <label className="block font-medium mb-1">Favorite Categories</label>
-          <div className="flex flex-wrap gap-2">
-            {preferences.favoriteCategories.map((cat) => (
-              <span key={cat} className="px-3 py-1 bg-gray-200 rounded-full text-sm">
-                {cat}
-              </span>
-            ))}
-          </div>
-        </div>
         <Button onClick={handlePreferencesSave} loading={saving}>
           Save Preferences
         </Button>
