@@ -1,7 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin"; // server-side Supabase client with service key
 import { getServerSession } from "next-auth/next"; // note /next here
-import { authOptions } from "@/lib/authOptions"; // <-- adjust path to your NextAuth config
+import { authOptions } from "@/lib/authOptions"; // your NextAuth config
+
+interface PreferencesRequestBody {
+  theme?: string;
+  language?: string;
+  notifications?: boolean;
+  privacyMode?: boolean;
+  defaultDashboard?: string;
+  aiTone?: string;
+  favoriteCategories?: string[];
+}
 
 // Helper to map DB snake_case to camelCase
 function mapPrefsToCamelCase(prefs: any) {
@@ -17,7 +27,7 @@ function mapPrefsToCamelCase(prefs: any) {
   };
 }
 
-export async function GET(request: NextRequest) {
+export async function GET(_: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
 
@@ -49,8 +59,9 @@ export async function GET(request: NextRequest) {
     }
 
     return NextResponse.json(mapPrefsToCamelCase(data));
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message || "Server error" }, { status: 500 });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Server error";
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }
 
@@ -62,17 +73,20 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const body = await request.json();
+    const body: PreferencesRequestBody = await request.json();
+
+    // Validate or sanitize as needed here, e.g.:
+    // if (body.theme && typeof body.theme !== 'string') { ... }
 
     const prefs = {
       user_id: session.user.id,
-      theme: body.theme || "light",
-      language: body.language || "en",
+      theme: body.theme ?? "light",
+      language: body.language ?? "en",
       notifications: body.notifications ?? true,
       privacy_mode: body.privacyMode ?? false,
-      default_dashboard: body.defaultDashboard || "overview",
-      ai_tone: body.aiTone || "neutral",
-      favorite_categories: body.favoriteCategories || [],
+      default_dashboard: body.defaultDashboard ?? "overview",
+      ai_tone: body.aiTone ?? "neutral",
+      favorite_categories: body.favoriteCategories ?? [],
     };
 
     const { data, error } = await supabaseAdmin
@@ -86,7 +100,8 @@ export async function POST(request: NextRequest) {
     }
 
     return NextResponse.json(mapPrefsToCamelCase(data));
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message || "Server error" }, { status: 500 });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Server error";
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

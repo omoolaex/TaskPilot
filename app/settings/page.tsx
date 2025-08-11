@@ -4,7 +4,7 @@ import { useState, useEffect, ChangeEvent } from "react";
 import { useSession } from "next-auth/react";
 import Image from "next/image";
 import { toast } from "sonner";
-import { supabase } from "@/lib/supabase"; // Adjust path if needed
+// Removed unused supabase import
 
 type Preferences = {
   theme: string;
@@ -78,7 +78,7 @@ export default function SettingsPage() {
       if (image === null && session.user.image) setImage(session.user.image);
       if (!emailVerified) setEmailVerified(true); // Replace with real check if needed
     }
-  }, [session]);
+  }, [session, email, emailVerified, image, name]); // added missing deps here
 
   // Image upload handler with Supabase storage
   const handleImageChange = async (e: ChangeEvent<HTMLInputElement>) => {
@@ -140,8 +140,12 @@ export default function SettingsPage() {
       if (typeof data.emailVerified === "boolean") {
         setEmailVerified(data.emailVerified);
       }
-    } catch (err: any) {
-      toast.error(err.message || "Failed to save profile");
+    } catch (err: unknown) {
+      if (err instanceof Error) {
+        toast.error(err.message || "Failed to save profile");
+      } else {
+        toast.error("Failed to save profile");
+      }
     } finally {
       setSaving(false);
     }
@@ -157,8 +161,12 @@ export default function SettingsPage() {
       });
       if (!res.ok) throw new Error("Failed to resend verification email");
       toast.success("Verification email sent!");
-    } catch (err: any) {
-      toast.error(err.message || "Error sending verification email");
+    } catch (err: unknown) {
+      if (err instanceof Error) {
+        toast.error(err.message || "Error sending verification email");
+      } else {
+        toast.error("Error sending verification email");
+      }
     }
   };
 
@@ -186,45 +194,53 @@ export default function SettingsPage() {
       setCurrentPassword("");
       setNewPassword("");
       setConfirmPassword("");
-    } catch (err: any) {
-      toast.error(err.message || "Error updating password");
+    } catch (err: unknown) {
+      if (err instanceof Error) {
+        toast.error(err.message || "Error updating password");
+      } else {
+        toast.error("Error updating password");
+      }
     } finally {
       setSaving(false);
     }
   };
 
-const handlePreferencesSave = async () => {
-  setSaving(true);
-  try {
-    const res = await fetch("/api/settings/preferences", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "credentials": "include",
-      },
-      body: JSON.stringify(preferences),
-    });
+  const handlePreferencesSave = async () => {
+    setSaving(true);
+    try {
+      const res = await fetch("/api/settings/preferences", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          credentials: "include",
+        },
+        body: JSON.stringify(preferences),
+      });
 
-    if (!res.ok) {
-      const errorData = await res.json();
-      throw new Error(errorData.error || "Failed to save preferences");
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.error || "Failed to save preferences");
+      }
+
+      const savedPrefs = await res.json();
+      setPreferences((prev) => ({
+        ...prev,
+        // Optionally update with any server-processed preferences
+        ...savedPrefs,
+        favoriteCategories: savedPrefs.favorite_categories || prev.favoriteCategories,
+      }));
+
+      toast.success("Preferences saved!");
+    } catch (error: unknown) {
+      if (error instanceof Error) {
+        toast.error(error.message || "Failed to save preferences.");
+      } else {
+        toast.error("Failed to save preferences.");
+      }
+    } finally {
+      setSaving(false);
     }
-
-    const savedPrefs = await res.json();
-    setPreferences((prev) => ({
-      ...prev,
-      // Optionally update with any server-processed preferences
-      ...savedPrefs,
-      favoriteCategories: savedPrefs.favorite_categories || prev.favoriteCategories,
-    }));
-
-    toast.success("Preferences saved!");
-  } catch (error: any) {
-    toast.error(error.message || "Failed to save preferences.");
-  } finally {
-    setSaving(false);
-  }
-};
+  };
 
   // Detect profile form changes
   const isProfileDirty = name !== originalName || image !== originalImage;

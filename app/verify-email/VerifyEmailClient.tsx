@@ -42,7 +42,7 @@ export default function VerifyEmailClient() {
           setMessage(data.error || "Verification failed.");
           toast.error(data.error || "Verification failed.");
         }
-      } catch (error) {
+      } catch {
         setStatus("error");
         setMessage("An unexpected error occurred.");
         toast.error("An unexpected error occurred.");
@@ -85,9 +85,7 @@ export default function VerifyEmailClient() {
       <div className="max-w-md w-full text-center">
         {status === "loading" && <p>Verifying your email...</p>}
 
-        {status === "success" && (
-          <p className="text-green-600">{message}</p>
-        )}
+        {status === "success" && <p className="text-green-600">{message}</p>}
 
         {status === "error" && (
           <>

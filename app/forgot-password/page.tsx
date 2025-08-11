@@ -12,15 +12,22 @@ export default function ForgotPasswordPage() {
   const [loading, setLoading] = useState(false);
   const router = useRouter();
 
+  const isEmailValid = /\S+@\S+\.\S+/.test(email);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!isEmailValid) {
+      toast.error("Please enter a valid email address.");
+      return;
+    }
     setLoading(true);
 
     try {
+      const trimmedEmail = email.trim();
       const res = await fetch("/api/auth/request-password-reset", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email }),
+        body: JSON.stringify({ email: trimmedEmail }),
       });
 
       const data = await res.json();
@@ -31,7 +38,7 @@ export default function ForgotPasswordPage() {
         toast.success("Password reset link sent! Check your email.");
         router.push("/login");
       }
-    } catch (err) {
+    } catch (err: unknown) {
       toast.error("Unexpected error occurred.");
     } finally {
       setLoading(false);
@@ -51,8 +58,9 @@ export default function ForgotPasswordPage() {
               onChange={(e) => setEmail(e.target.value)}
               required
               disabled={loading}
+              aria-label="Email address"
             />
-            <Button type="submit" className="w-full" disabled={loading}>
+            <Button type="submit" className="w-full" disabled={loading || !isEmailValid}>
               {loading ? "Sending..." : "Send Reset Link"}
             </Button>
             <Button
