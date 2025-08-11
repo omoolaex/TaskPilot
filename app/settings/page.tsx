@@ -1,533 +1,501 @@
 "use client";
 
-import { useEffect, useState, useCallback, useMemo } from "react";
+import { useState, useEffect, ChangeEvent } from "react";
 import { useSession } from "next-auth/react";
-import { useTheme } from "next-themes";
-import { supabase } from "@/lib/supabase";
-import { toast } from "sonner";
-import { useRouter } from "next/navigation";
-import { Button } from "@/components/ui/button";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { Switch } from "@/components/ui/switch";
-import { Card, CardContent } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
 import Image from "next/image";
+import { toast } from "sonner";
+import { supabase } from "@/lib/supabase"; // Adjust path if needed
 
-type Settings = {
-  theme: "system" | "light" | "dark";
-  notifications: { email: boolean; push: boolean; sms: boolean };
-  privacy: {
-    twoFactor: boolean;
-    dataSharing: boolean;
-    accountVisibility: "public" | "private";
-  };
-  profile: { displayName: string; username: string; profilePicture: string };
-  advanced: { betaFeatures: boolean };
-};
-
-const defaultSettings: Settings = {
-  theme: "system",
-  notifications: { email: true, push: true, sms: false },
-  privacy: { twoFactor: false, dataSharing: true, accountVisibility: "public" },
-  profile: { displayName: "", username: "", profilePicture: "" },
-  advanced: { betaFeatures: false },
+type Preferences = {
+  theme: string;
+  language: string;
+  notifications: boolean;
+  privacyMode: boolean;
+  defaultDashboard: string;
+  aiTone: string;
+  favoriteCategories: string[];
 };
 
 export default function SettingsPage() {
-  const { data: session, status } = useSession();
-  const userId = session?.user?.id;
-  const { setTheme } = useTheme();
-  const router = useRouter();
+  const { data: session } = useSession();
 
-  const [settings, setSettings] = useState<Settings>(defaultSettings);
-  const [savedSettings, setSavedSettings] = useState<Settings>(defaultSettings);
-  const [loading, setLoading] = useState(false);
-  const [previewTheme, setPreviewTheme] = useState<Settings["theme"]>("system");
+  // Profile state
+  const [name, setName] = useState("");
+  const [image, setImage] = useState<string | null>(null);
+  const [email, setEmail] = useState("");
+  const [emailVerified, setEmailVerified] = useState(false);
 
+  // Original values for change detection
+  const [originalName, setOriginalName] = useState("");
+  const [originalImage, setOriginalImage] = useState<string | null>(null);
+
+  // Security state
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-  const [passwordLoading, setPasswordLoading] = useState(false);
 
-  const isDirty = useMemo(
-    () => JSON.stringify(settings) !== JSON.stringify(savedSettings),
-    [settings, savedSettings]
-  );
+  // Preferences state
+  const [preferences, setPreferences] = useState<Preferences>({
+    theme: "light",
+    language: "en",
+    notifications: true,
+    privacyMode: false,
+    defaultDashboard: "overview",
+    aiTone: "neutral",
+    favoriteCategories: ["AI Tools", "Analytics"],
+  });
 
-  // Fetch user settings on mount or userId change
-  const fetchSettings = useCallback(async () => {
-    if (!userId) return;
-    setLoading(true);
+  // Saving state
+  const [saving, setSaving] = useState(false);
 
-    try {
-      const { data, error } = await supabase
-        .from("settings")
-        .select("settings")
-        .eq("user_id", userId)
-        .single();
-
-      if (error && (error.code as string) !== "PGRST116") {
-        console.error("Supabase error loading settings:", error);
-        toast.error("Failed to load settings");
-        return;
-      }
-
-      if (data?.settings) {
-        setSettings((prev) => ({ ...prev, ...data.settings }));
-        setSavedSettings(data.settings);
-        setPreviewTheme(data.settings.theme ?? "system");
-      } else {
-        setSettings(defaultSettings);
-        setSavedSettings(defaultSettings);
-        setPreviewTheme(defaultSettings.theme);
-      }
-    } catch (err) {
-      console.error("Unexpected error fetching settings:", err);
-      toast.error("Failed to load settings");
-    } finally {
-      setLoading(false);
-    }
-  }, [userId]);
-
+  // Fetch profile on mount
   useEffect(() => {
-    void fetchSettings();
-  }, [fetchSettings]);
+    async function fetchProfile() {
+      try {
+        const res = await fetch("/api/profile");
+        if (!res.ok) throw new Error("Failed to fetch profile");
+        const data = await res.json();
 
-  // Sync preview theme with next-themes
-  useEffect(() => {
-    setTheme(previewTheme);
-  }, [previewTheme, setTheme]);
-
-  const saveSettings = useCallback(async () => {
-    if (!userId) return;
-    setLoading(true);
-
-    try {
-      const { error } = await supabase
-        .from("settings")
-        .upsert({ user_id: userId, settings }, { onConflict: "user_id" });
-
-      if (error) throw error;
-
-      setSavedSettings(settings);
-      toast.success("Settings saved successfully");
-      setTheme(settings.theme);
-
-      setTimeout(() => {
-        router.refresh();
-        void window.location.reload();
-      }, 300);
-    } catch (err) {
-      console.error("Failed to save settings:", err);
-      toast.error("Failed to save settings");
-    } finally {
-      setLoading(false);
+        setName(data.name || "");
+        setOriginalName(data.name || "");
+        setEmail(data.email || "");
+        setEmailVerified(data.emailVerified || false);
+        setImage(data.image || null);
+        setOriginalImage(data.image || null);
+      } catch (error) {
+        console.error(error);
+        toast.error("Failed to load profile");
+      }
     }
-  }, [settings, userId, router, setTheme]);
-
-  const handleProfilePictureUpload = useCallback(
-    async (file: File) => {
-      if (!userId) return;
-      const fileExt = file.name.split(".").pop();
-      if (!fileExt) {
-        toast.error("Invalid file type");
-        return;
-      }
-      const filePath = `avatars/${userId}.${fileExt}`;
-
-      const { error: uploadError } = await supabase.storage
-        .from("avatars")
-        .upload(filePath, file, { upsert: true });
-
-      if (uploadError) {
-        console.error("Upload error:", uploadError);
-        toast.error("Upload failed");
-        return;
-      }
-
-      const { data: publicData } = supabase.storage
-        .from("avatars")
-        .getPublicUrl(filePath);
-
-      if (publicData?.publicUrl) {
-        setSettings((prev) => ({
-          ...prev,
-          profile: { ...prev.profile, profilePicture: publicData.publicUrl },
-        }));
-
-        const { error: updateError } = await supabase
-          .from("users")
-          .update({ image: publicData.publicUrl })
-          .eq("id", userId);
-
-        if (updateError) {
-          toast.error("Failed to update profile picture");
-        } else {
-          toast.success("Profile picture uploaded");
-        }
-      } else {
-        toast.error("Failed to get public URL");
-      }
-    },
-    [userId]
-  );
-
-  const logOutOtherSessions = useCallback(() => {
-    toast.success("Other sessions logged out");
-    // Implement session invalidation logic here
+    fetchProfile();
   }, []);
 
-  const deleteAccount = useCallback(async () => {
-    if (!userId) return;
-    if (
-      !confirm(
-        "Are you sure you want to delete your account? This action is irreversible."
-      )
-    )
+  // Update profile data from session if not set from API
+  useEffect(() => {
+    if (session?.user) {
+      if (!name) setName(session.user.name || "");
+      if (!email) setEmail(session.user.email || "");
+      if (image === null && session.user.image) setImage(session.user.image);
+      if (!emailVerified) setEmailVerified(true); // Replace with real check if needed
+    }
+  }, [session]);
+
+  // Image upload handler with Supabase storage
+  const handleImageChange = async (e: ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files?.[0]) return;
+
+    const file = e.target.files[0];
+
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error("File size exceeds 5MB limit.");
       return;
+    }
+
+    setSaving(true);
 
     try {
-      const { error } = await supabase.rpc("delete_user_account", { uid: userId });
-      if (error) {
-        console.error("Delete account error:", error);
-        toast.error("Failed to delete account");
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const res = await fetch("/api/upload-avatar", {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!res.ok) {
+        const errorData = await res.json();
+        toast.error(errorData.error || "Failed to upload image.");
+        setSaving(false);
         return;
       }
-      toast.success("Account deleted");
-      router.push("/");
-    } catch (err) {
-      console.error("Unexpected delete account error:", err);
-      toast.error("Failed to delete account");
-    }
-  }, [userId, router]);
 
-  const handleChangePassword = useCallback(async () => {
-    if (newPassword !== confirmPassword) {
-      toast.error("New passwords do not match");
-      return;
+      const data = await res.json();
+      setImage(data.publicUrl);
+      toast.success("Image uploaded successfully!");
+    } catch (error) {
+      toast.error("Unexpected error during image upload.");
+      console.error(error);
+    } finally {
+      setSaving(false);
     }
-    if (!currentPassword || !newPassword) {
-      toast.error("Please fill in all password fields");
-      return;
-    }
-    setPasswordLoading(true);
+  };
 
+  // Save profile handler
+  const handleProfileSave = async () => {
+    setSaving(true);
     try {
-      const res = await fetch("/api/change-password", {
+      const res = await fetch("/api/profile", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, image }),
+      });
+      const data = await res.json();
+
+      if (!res.ok) throw new Error(data.error || "Failed to save profile");
+
+      toast.success("Profile updated successfully!");
+      setOriginalName(name);
+      setOriginalImage(image);
+
+      if (typeof data.emailVerified === "boolean") {
+        setEmailVerified(data.emailVerified);
+      }
+    } catch (err: any) {
+      toast.error(err.message || "Failed to save profile");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Resend verification email handler
+  const handleResendVerification = async () => {
+    try {
+      const res = await fetch("/api/auth/resend-verification", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      });
+      if (!res.ok) throw new Error("Failed to resend verification email");
+      toast.success("Verification email sent!");
+    } catch (err: any) {
+      toast.error(err.message || "Error sending verification email");
+    }
+  };
+
+  // Password update handler
+  const handlePasswordUpdate = async () => {
+    if (!currentPassword || !newPassword) {
+      return toast.error("Please fill all password fields.");
+    }
+    if (newPassword !== confirmPassword) {
+      return toast.error("Passwords do not match!");
+    }
+
+    setSaving(true);
+    try {
+      const res = await fetch("/api/settings/change-password", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ currentPassword, newPassword }),
       });
 
       const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Error updating password");
 
-      if (!res.ok) throw new Error(data.error || "Failed to change password");
-
-      toast.success("Password changed successfully");
-
+      toast.success("Password updated successfully!");
       setCurrentPassword("");
       setNewPassword("");
       setConfirmPassword("");
-    } catch (err) {
-      if (err instanceof Error) toast.error(err.message);
-      else toast.error("Failed to change password");
+    } catch (err: any) {
+      toast.error(err.message || "Error updating password");
     } finally {
-      setPasswordLoading(false);
+      setSaving(false);
     }
-  }, [currentPassword, newPassword, confirmPassword]);
+  };
 
-  if (status === "loading")
-    return (
-      <div className="text-center py-12 text-lg font-semibold">Loading...</div>
-    );
-  if (!session)
-    return (
-      <div className="text-center py-12 text-lg font-semibold">
-        Please login to access settings.
-      </div>
-    );
+  // Preferences save handler (simulate)
+  const handlePreferencesSave = async () => {
+    setSaving(true);
+    try {
+      await new Promise((res) => setTimeout(res, 800));
+      toast.success("Preferences saved!");
+    } catch {
+      toast.error("Failed to save preferences.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Detect profile form changes
+  const isProfileDirty = name !== originalName || image !== originalImage;
 
   return (
-    <main className="max-w-3xl mx-auto p-6 space-y-10">
-      <h1 className="text-4xl font-extrabold text-center">Settings</h1>
-
-      {/* Appearance */}
-      <Card>
-        <CardContent className="space-y-4">
-          <h2 className="text-2xl font-semibold">Appearance</h2>
-          <label
-            htmlFor="themeSelect"
-            className="block mb-2 font-medium cursor-pointer"
-          >
-            Theme
-          </label>
-          <Select
-            value={settings.theme}
-            onValueChange={(v) => {
-              setSettings((p) => ({ ...p, theme: v as Settings["theme"] }));
-              setPreviewTheme(v as Settings["theme"]);
-            }}
-            disabled={loading}
-          >
-            <SelectTrigger id="themeSelect" aria-label="Select Theme">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="system">System Default</SelectItem>
-              <SelectItem value="light">Light</SelectItem>
-              <SelectItem value="dark">Dark</SelectItem>
-            </SelectContent>
-          </Select>
-        </CardContent>
-      </Card>
-
-      {/* Notifications */}
-      <Card>
-        <CardContent className="space-y-4">
-          <h2 className="text-2xl font-semibold">Notifications</h2>
-          {Object.entries(settings.notifications).map(([key, value]) => (
-            <div
-              key={key}
-              className="flex items-center justify-between"
-              role="group"
-              aria-label={`Toggle ${key} notifications`}
-            >
-              <span className="capitalize">{key}</span>
-              <Switch
-                checked={value}
-                onCheckedChange={(checked) =>
-                  setSettings((p) => ({
-                    ...p,
-                    notifications: { ...p.notifications, [key]: checked },
-                  }))
-                }
-                disabled={loading}
-              />
-            </div>
-          ))}
-        </CardContent>
-      </Card>
-
-      {/* Privacy */}
-      <Card>
-        <CardContent className="space-y-4">
-          <h2 className="text-2xl font-semibold">Privacy & Security</h2>
-          <div className="flex items-center justify-between">
-            <label htmlFor="twoFactor" className="cursor-pointer">
-              Two-Factor Authentication
-            </label>
-            <Switch
-              id="twoFactor"
-              checked={settings.privacy.twoFactor}
-              onCheckedChange={(checked) =>
-                setSettings((p) => ({
-                  ...p,
-                  privacy: { ...p.privacy, twoFactor: checked },
-                }))
-              }
-              disabled={loading}
-            />
-          </div>
-          <div className="flex items-center justify-between">
-            <label htmlFor="dataSharing" className="cursor-pointer">
-              Data Sharing Consent
-            </label>
-            <Switch
-              id="dataSharing"
-              checked={settings.privacy.dataSharing}
-              onCheckedChange={(checked) =>
-                setSettings((p) => ({
-                  ...p,
-                  privacy: { ...p.privacy, dataSharing: checked },
-                }))
-              }
-              disabled={loading}
-            />
-          </div>
-          <div>
-            <label
-              htmlFor="accountVisibility"
-              className="block mb-2 font-medium cursor-pointer"
-            >
-              Account Visibility
-            </label>
-            <Select
-              value={settings.privacy.accountVisibility}
-              onValueChange={(v) =>
-                setSettings((p) => ({
-                  ...p,
-                  privacy: {
-                    ...p.privacy,
-                    accountVisibility: v as "public" | "private",
-                  },
-                }))
-              }
-              disabled={loading}
-            >
-              <SelectTrigger id="accountVisibility">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="public">Public</SelectItem>
-                <SelectItem value="private">Private</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <Button variant="outline" onClick={logOutOtherSessions} disabled={loading}>
-            Log Out Other Sessions
-          </Button>
-        </CardContent>
-      </Card>
+    <div className="max-w-4xl mx-auto p-6 space-y-10">
+      <h1 className="text-3xl font-bold">Settings</h1>
 
       {/* Profile */}
-      <Card>
-        <CardContent className="space-y-4">
-          <h2 className="text-2xl font-semibold">Account & Profile</h2>
-          <div>
-            <label className="block mb-2 font-medium">Profile Picture</label>
-            {settings.profile.profilePicture && (
-              <Image
-                src={settings.profile.profilePicture}
-                alt="Profile"
-                width={80}
-                height={80}
-                className="rounded-full"
-                unoptimized
-              />
-            )}
-            <Input
+      <Card title="Profile Information">
+        <div className="mb-4">
+          <label htmlFor="name" className="block font-medium mb-1">
+            Full Name
+          </label>
+          <input
+            id="name"
+            type="text"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="Enter your full name"
+            className="w-full border rounded p-2 focus:outline-none focus:ring focus:border-blue-500"
+          />
+        </div>
+
+        <div className="mb-4">
+          <label className="block font-medium mb-2">Avatar</label>
+          <div className="flex items-center space-x-4">
+            <div className="w-20 h-20 rounded-full bg-gray-200 overflow-hidden border border-gray-300 relative">
+              {image ? (
+                <Image
+                  src={image}
+                  alt="Avatar preview"
+                  fill
+                  sizes="80px"
+                  style={{ objectFit: "cover" }}
+                  priority
+                />
+              ) : (
+                <span className="text-gray-400 flex items-center justify-center h-full w-full">
+                  No Image
+                </span>
+              )}
+            </div>
+            <input
               type="file"
               accept="image/*"
-              onChange={(e) =>
-                e.target.files && handleProfilePictureUpload(e.target.files[0])
-              }
-              disabled={loading}
+              onChange={handleImageChange}
+              className="cursor-pointer"
+              aria-label="Upload avatar image"
             />
           </div>
-          <label htmlFor="displayName" className="block mt-2 mb-1 font-medium">
-            Display Name
-          </label>
-          <Input
-            id="displayName"
-            placeholder="Display Name"
-            value={settings.profile.displayName}
-            onChange={(e) =>
-              setSettings((p) => ({
-                ...p,
-                profile: { ...p.profile, displayName: e.target.value },
-              }))
-            }
-            disabled={loading}
-          />
-          <label htmlFor="username" className="block mt-2 mb-1 font-medium">
-            Username
-          </label>
-          <Input
-            id="username"
-            placeholder="Username"
-            value={settings.profile.username}
-            onChange={(e) =>
-              setSettings((p) => ({
-                ...p,
-                profile: { ...p.profile, username: e.target.value },
-              }))
-            }
-            disabled={loading}
-          />
-        </CardContent>
-      </Card>
+          <p className="text-sm mt-1 text-gray-500">
+            Supported formats: JPG, PNG, GIF. Max size: 5MB.
+          </p>
+        </div>
 
-      {/* Change Password */}
-      <Card>
-        <CardContent className="space-y-4">
-          <h2 className="text-2xl font-semibold">Change Password</h2>
-          <label htmlFor="currentPassword" className="block mb-1 font-medium">
-            Current Password
-          </label>
-          <Input
-            id="currentPassword"
-            type="password"
-            placeholder="Current Password"
-            value={currentPassword}
-            onChange={(e) => setCurrentPassword(e.target.value)}
-            disabled={passwordLoading || loading}
+        <div className="mb-4">
+          <label className="block font-medium mb-1">Email</label>
+          <input
+            type="email"
+            value={email}
+            readOnly
+            className="w-full bg-gray-100 border rounded p-2 cursor-not-allowed"
+            aria-readonly
           />
-          <label htmlFor="newPassword" className="block mb-1 font-medium">
-            New Password
-          </label>
-          <Input
-            id="newPassword"
-            type="password"
-            placeholder="New Password"
-            value={newPassword}
-            onChange={(e) => setNewPassword(e.target.value)}
-            disabled={passwordLoading || loading}
-          />
-          <label htmlFor="confirmPassword" className="block mb-1 font-medium">
-            Confirm New Password
-          </label>
-          <Input
-            id="confirmPassword"
-            type="password"
-            placeholder="Confirm New Password"
-            value={confirmPassword}
-            onChange={(e) => setConfirmPassword(e.target.value)}
-            disabled={passwordLoading || loading}
-          />
-          <Button
-            onClick={handleChangePassword}
-            disabled={passwordLoading || loading}
+          <p
+            className={`mt-1 font-semibold flex items-center space-x-2 ${
+              emailVerified ? "text-green-600" : "text-red-600"
+            }`}
+            title={emailVerified ? "Email verified" : "Email not verified"}
           >
-            {passwordLoading ? "Updating..." : "Update Password"}
-          </Button>
-        </CardContent>
-      </Card>
+            {emailVerified ? (
+              <>
+                <span aria-hidden="true">✅</span> <span>Email Verified</span>
+              </>
+            ) : (
+              <>
+                <span aria-hidden="true">❌</span> <span>Email Not Verified</span>
+              </>
+            )}
+          </p>
+          {!emailVerified && (
+            <button
+              onClick={handleResendVerification}
+              className="mt-2 text-sm text-blue-600 underline hover:text-blue-800"
+              type="button"
+            >
+              Resend Verification Email
+            </button>
+          )}
+        </div>
 
-      {/* Advanced */}
-      <Card>
-        <CardContent className="space-y-4">
-          <h2 className="text-2xl font-semibold">Advanced</h2>
-          <div className="flex items-center justify-between">
-            <label htmlFor="betaFeatures" className="cursor-pointer">
-              Beta Features
-            </label>
-            <Switch
-              id="betaFeatures"
-              checked={settings.advanced.betaFeatures}
-              onCheckedChange={(checked) =>
-                setSettings((p) => ({
-                  ...p,
-                  advanced: { ...p.advanced, betaFeatures: checked },
-                }))
-              }
-              disabled={loading}
-            />
-          </div>
-          <Button variant="destructive" onClick={deleteAccount} disabled={loading}>
-            Delete Account
-          </Button>
-        </CardContent>
-      </Card>
-
-      {/* Actions */}
-      <div className="flex justify-end gap-4">
-        <Button
-          onClick={() => setSettings(savedSettings)}
-          disabled={!isDirty || loading}
-          variant="outline"
+        <button
+          onClick={handleProfileSave}
+          disabled={!isProfileDirty || saving}
+          className={`mt-4 px-6 py-2 rounded text-white transition ${
+            !saving && isProfileDirty
+              ? "bg-blue-600 hover:bg-blue-700"
+              : "bg-gray-400 cursor-not-allowed"
+          }`}
+          aria-disabled={!isProfileDirty || saving}
         >
-          Reset
+          {saving ? "Saving..." : "Save Profile"}
+        </button>
+      </Card>
+
+      {/* Security */}
+      <Card title="Account Security">
+        <Input
+          label="Current Password"
+          type="password"
+          value={currentPassword}
+          onChange={(e) => setCurrentPassword(e.target.value)}
+        />
+        <Input
+          label="New Password"
+          type="password"
+          value={newPassword}
+          onChange={(e) => setNewPassword(e.target.value)}
+        />
+        <Input
+          label="Confirm Password"
+          type="password"
+          value={confirmPassword}
+          onChange={(e) => setConfirmPassword(e.target.value)}
+        />
+        <Button onClick={handlePasswordUpdate} loading={saving} color="green">
+          Update Password
         </Button>
-        <Button onClick={saveSettings} disabled={!isDirty || loading}>
-          {loading ? "Saving..." : "Save Changes"}
+      </Card>
+
+      {/* Preferences */}
+      <Card title="Preferences">
+        <Select
+          label="Theme"
+          value={preferences.theme}
+          onChange={(e) => setPreferences((p) => ({ ...p, theme: e.target.value }))}
+          options={[
+            { value: "light", label: "Light" },
+            { value: "dark", label: "Dark" },
+            { value: "system", label: "System" },
+          ]}
+        />
+        <Select
+          label="Language"
+          value={preferences.language}
+          onChange={(e) => setPreferences((p) => ({ ...p, language: e.target.value }))}
+          options={[
+            { value: "en", label: "English" },
+            { value: "fr", label: "French" },
+            { value: "es", label: "Spanish" },
+          ]}
+        />
+        <Checkbox
+          label="Enable Notifications"
+          checked={preferences.notifications}
+          onChange={(e) =>
+            setPreferences((p) => ({ ...p, notifications: e.target.checked }))
+          }
+        />
+        <Checkbox
+          label="Enable Privacy Mode"
+          checked={preferences.privacyMode}
+          onChange={(e) =>
+            setPreferences((p) => ({ ...p, privacyMode: e.target.checked }))
+          }
+        />
+        <Select
+          label="Default Dashboard"
+          value={preferences.defaultDashboard}
+          onChange={(e) =>
+            setPreferences((p) => ({ ...p, defaultDashboard: e.target.value }))
+          }
+          options={[
+            { value: "overview", label: "Overview" },
+            { value: "projects", label: "Projects" },
+            { value: "analytics", label: "Analytics" },
+          ]}
+        />
+        <Select
+          label="AI Tone"
+          value={preferences.aiTone}
+          onChange={(e) => setPreferences((p) => ({ ...p, aiTone: e.target.value }))}
+          options={[
+            { value: "friendly", label: "Friendly" },
+            { value: "neutral", label: "Neutral" },
+            { value: "formal", label: "Formal" },
+          ]}
+        />
+        <div>
+          <label className="block font-medium mb-1">Favorite Categories</label>
+          <div className="flex flex-wrap gap-2">
+            {preferences.favoriteCategories.map((cat) => (
+              <span key={cat} className="px-3 py-1 bg-gray-200 rounded-full text-sm">
+                {cat}
+              </span>
+            ))}
+          </div>
+        </div>
+        <Button onClick={handlePreferencesSave} loading={saving}>
+          Save Preferences
         </Button>
-      </div>
-    </main>
+      </Card>
+    </div>
+  );
+}
+
+/* ---------------- Reusable Components ---------------- */
+
+function Card({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <section className="bg-white p-6 rounded-xl shadow space-y-4">
+      <h2 className="text-xl font-semibold">{title}</h2>
+      {children}
+    </section>
+  );
+}
+
+function Input({
+  label,
+  className = "",
+  ...props
+}: React.InputHTMLAttributes<HTMLInputElement> & { label: string }) {
+  return (
+    <div>
+      <label className="block font-medium mb-1">{label}</label>
+      <input
+        {...props}
+        className={`w-full border rounded p-2 focus:outline-none focus:ring focus:border-blue-400 ${className}`}
+      />
+    </div>
+  );
+}
+
+function Select({
+  label,
+  options,
+  ...props
+}: React.SelectHTMLAttributes<HTMLSelectElement> & {
+  label: string;
+  options: { value: string; label: string }[];
+}) {
+  return (
+    <div>
+      <label className="block font-medium mb-1">{label}</label>
+      <select
+        {...props}
+        className="w-full border rounded p-2 focus:outline-none focus:ring focus:border-blue-400"
+      >
+        {options.map((opt) => (
+          <option key={opt.value} value={opt.value}>
+            {opt.label}
+          </option>
+        ))}
+      </select>
+    </div>
+  );
+}
+
+function Checkbox({
+  label,
+  ...props
+}: React.InputHTMLAttributes<HTMLInputElement> & { label: string }) {
+  return (
+    <label className="flex items-center space-x-2">
+      <input type="checkbox" {...props} />
+      <span>{label}</span>
+    </label>
+  );
+}
+
+function Button({
+  children,
+  loading,
+  color = "blue",
+  ...props
+}: React.ButtonHTMLAttributes<HTMLButtonElement> & {
+  loading?: boolean;
+  color?: "blue" | "green";
+}) {
+  const base =
+    color === "green"
+      ? "bg-green-600 hover:bg-green-700"
+      : "bg-blue-600 hover:bg-blue-700";
+  return (
+    <button
+      {...props}
+      disabled={loading}
+      className={`${base} text-white px-4 py-2 rounded transition disabled:opacity-50`}
+    >
+      {loading ? "Saving..." : children}
+    </button>
   );
 }

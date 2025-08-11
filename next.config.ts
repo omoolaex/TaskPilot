@@ -11,7 +11,7 @@ const withPWA = require("next-pwa")({
 
 const nextConfig: NextConfig & { webpack?: (config: Configuration) => Configuration } = {
   images: {
-    domains: ["lh3.googleusercontent.com", "avatars.githubusercontent.com"],
+    domains: ["lh3.googleusercontent.com", "avatars.githubusercontent.com", "ednactafqdbywnsxefhn.supabase.co"],
   },
   reactStrictMode: true,
 
